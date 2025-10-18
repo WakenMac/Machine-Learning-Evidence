@@ -14,7 +14,7 @@ for id in range(4):
 
 # For loop to save the aruco markers in the given directory
 for i in range(4):
-    cv2.imwrite(f'Machine_Learning_Course/Learning_Evidence/ArUco_Markers/Creating_an_aruco_marker/aruco_marker_{i}.png', marker_images[i])
+    cv2.imwrite(f'Machine_Learning_Course/Code/ArUco_Markers/Creating_an_aruco_marker/aruco_marker_{marker_size}_{i}.png', marker_images[i])
 
 # Save and display
 # cv2.imwrite("Machine_Learning_Course/Learning_Evidence/ArUco_Markers/Creating_an_aruco_marker/aruco_marker_0.png", marker_img)
