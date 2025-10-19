@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
 
-img = cv2.imread("Machine_Learning_Course\\Images\\ArUco_Markers\\Detect\\aruco_marker_detect_four_100.png")
+img = cv2.imread("Machine_Learning_Course\\Images\\ArUco_Markers\\Detect\\aruco_marker_detect_piano_blue_200.png")
+img = cv2.resize(img, (990, 540))
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)

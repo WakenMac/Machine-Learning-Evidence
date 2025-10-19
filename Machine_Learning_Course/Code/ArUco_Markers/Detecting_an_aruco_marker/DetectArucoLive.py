@@ -40,13 +40,14 @@ def main():
             if not success:
                 print('Unable to read frame')
             else:
-                img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                # img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                img = frame.copy()
                 corners, ids, _ = detector.detectMarkers(img)
-                # detected_image = aruco.drawDetectedMarkers(img, corners, ids)
+                detected_image = aruco.drawDetectedMarkers(img, corners, ids)
                 detected_image = draw_boarder(img, corners, ids)
                 
-                final_image = cv2.cvtColor(detected_image, cv2.COLOR_GRAY2BGR)
-                cv2.imshow('HomePiano: My AR Piano', final_image)
+                # final_image = cv2.cvtColor(detected_image, cv2.COLOR_GRAY2BGR)
+                cv2.imshow('HomePiano: My AR Piano', detected_image)
                 
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
