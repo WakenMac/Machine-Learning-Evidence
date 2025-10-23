@@ -89,7 +89,6 @@ def get_min_max(corners, ids):
     Note:   y-value increases as you move down the image.
     """
     points = generate_boarder_points(corners, ids)
-    print(points)
     return {'x-min':points[0][0],
             'x-max':points[1][0],
             'y-min':points[0][1],
@@ -104,24 +103,52 @@ def get_border_dimensions(border_values:dict):
     y = border_values['y-max'] - border_values['y-min']
     return [y, x]
 
-def get_key_length(boarder_width:int):
+def get_fingertip_coordinates(mp_hands, shape:list, hand_landmarks):
+    """
+    Gets MediaPipe's normalized fingertip coordinates and transforms them to get the pixel fingertip coordinates
+    
+    @param mp_hands  To use the HandLandmark Enums
+    @param shape     The height and width of the image
+    @param results   The landmarks for one or two hand(s)
+
+    @returns         A list containing the x and y pixel coordinate of the tip of the index finger.
+    """
+    # Normalized fingertip coordinates
+    fingertip_coordinates = [hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].x,
+                                hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].y]
+    h, w, = shape
+
+    # Pixel fingertip coordinates
+    fingertip_coordinates[0] = int(w * fingertip_coordinates[0])
+    fingertip_coordinates[1] = int(h * fingertip_coordinates[1])
+    return fingertip_coordinates
+
+def get_key_width(boarder_width:int):
     """
     Gets the length for each key
-    @returns    The pixel length for each key
+    @returns    An integer representing the width for each key
     """
     return int(boarder_width/ 9)
 
-def get_key_hovered(fingertip_coordinates:list, key_length:int, boarder_values:dict):
+def get_key_hovered(fingertip_coordinates:list, key_width:int, boarder_values:dict):
     """
     Finds which key the fingertip is hovering over.
     The results may be inaccurate for slanted boarders (i.e., AR Piano is rotated).
     Calculations are made immediately to prevent repetitive if-else statements for error handling. Instead, error handling is made post-calculations.
 
-    @returns    A key from (A, B, C, ... , G) if the fingertip's coordinate is within the border and NA if not.
+    @param fingertip_coordinates    A list containing the x and y pixel coordinate of the index 
+                                    finger
+    @param key_width                The width for each piano key
+    @param boarder_values           A dictionary containing the maximum and minimum values for our 
+                                    x and y coordinates. See get_border_dimensions() to see the 
+                                    key-value pairs
+
+    @returns    A key from (A, B, C, ... , G) if the fingertip's coordinate is within the border 
+                and NA if not.
 
     EXAMPLE:
 
-    [1] A fingertip is hovering over a key
+    [1] A fingertip is hovering over a key.
 
     Boarder's coordinates are
     [[102 268]
@@ -137,7 +164,7 @@ def get_key_hovered(fingertip_coordinates:list, key_length:int, boarder_values:d
 
     Thus, the fingertip is hovering over the A key. The function returns 'A'
 
-    [2] A fingertip is not within the boarder
+    [2] A fingertip is not within the boarder.
     Boarder's coordinates are
     [[102 268]
      [323 268]
@@ -152,7 +179,7 @@ def get_key_hovered(fingertip_coordinates:list, key_length:int, boarder_values:d
 
     Thus the fingertip is not in the boarder. The function returns 'NA'
 
-    [3] The fingertip is over the boarder's x_max coordinate
+    [3] The fingertip is over the boarder's x_max coordinate.
     Boarder's coordinates are
     [[102 268]
      [323 268]
@@ -170,15 +197,14 @@ def get_key_hovered(fingertip_coordinates:list, key_length:int, boarder_values:d
     # Error catching
     if (fingertip_coordinates is None or len(fingertip_coordinates) != 2 or boarder_values is None or
         fingertip_coordinates[1] > boarder_values['y-max'] or fingertip_coordinates[1] < boarder_values['y-min']):
-        print('Index finger is outside of the boarder')
         return 'NA'
     
     # Calculates which key the fingertip is hovering over
     # Checks if the fingertip's x-coordinate is within the border (+ means yes, - means no)
-    xpixel_location = fingertip_coordinates[0] - (boarder_values['x-min'] + key_length)
+    xpixel_location = fingertip_coordinates[0] - (boarder_values['x-min'] + key_width)
     
     # Gets the value representing which key it is hovering over
-    key = float(xpixel_location / key_length)
+    key = float(xpixel_location / key_width)
 
     if key < 0:
         return 'NA'
@@ -202,10 +228,10 @@ def get_key_hovered(fingertip_coordinates:list, key_length:int, boarder_values:d
 
 def main():
     cap = cv2.VideoCapture(1)
-    
-    detector = init_detector()
+    aruco_detector = init_detector()
     hand_detector, mp_hands, mp_drawing = init_media_pipe_tools()
-    detect_hands = False
+    detect_hands = mark_hands = False
+    results = None
 
     if not cap.isOpened():
         print('Unable to access camera feed.')
@@ -213,7 +239,8 @@ def main():
     else:
         while True:
             success, frame = cap.read()
-            detect_hands = True
+            detect_hands = mark_hands = False
+            key_hovered = 'NA'
 
             if not success:
                 print('Unable to read frame')
@@ -222,53 +249,38 @@ def main():
                 img = frame.copy()
 
                 # Detects the ArUco Markers
-                corners, ids, _ = detector.detectMarkers(img)
+                corners, ids, _ = aruco_detector.detectMarkers(img)
                 detected_image = aruco.drawDetectedMarkers(img, corners, ids)
                 detected_image = draw_boarder(img, corners, ids)
 
-                if len(corners) != 2 or len(ids) != 2:
-                    detect_hands = False
+                if corners is not None and ids is not None and len(corners) == 2 and len(ids) == 2:
+                    detect_hands = True
 
-                # Detects media pipe's finger coordinate
-                mp_img = cv2.cvtColor(detected_image, cv2.COLOR_BGR2RGB)
-                mp_img.flags.writeable = False
-                results = hand_detector.process(mp_img)
-                mp_img.flags.writeable = True
-                mp_img = cv2.cvtColor(mp_img, cv2.COLOR_RGB2BGR)
+                if detect_hands:    
+                    # Detects media pipe's finger coordinates and draws them to the image
+                    mp_img = cv2.cvtColor(detected_image, cv2.COLOR_BGR2RGB)
+                    mp_img.flags.writeable = False
+                    results = hand_detector.process(mp_img)
 
-                key_hovered = 'NA'
+                    if results is not None and results.multi_hand_landmarks is not None:
+                        mark_hands = True
 
-                if detect_hands and results.multi_hand_landmarks:
-                    print(detect_hands)
-                    if len(results.multi_hand_landmarks) > 1:
-                        hand_landmarks = results.multi_hand_landmarks[0] # Gets the second hand
-                    else:
-                        hand_landmarks = results.multi_hand_landmarks[0] # Gets the second hand
+                if mark_hands:
+                    hand_landmarks = results.multi_hand_landmarks[0] # Gets the second hand
 
-                    # Normalized fingertip coordinates
-                    fingertip_coordinates = [hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].x,
-                                             hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].y]
-                    h, w, = mp_img.shape[:2]
-                    print(h, w)
-
-                    # Pixel fingertip coordinates
-                    fingertip_coordinates[0] = int(w * fingertip_coordinates[0])
-                    fingertip_coordinates[1] = int(h * fingertip_coordinates[1])
-                    mp_drawing.draw_landmarks(mp_img,
-                        hand_landmarks,
-                        mp_hands.HAND_CONNECTIONS)
+                    mp_drawing.draw_landmarks(detected_image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    fingertip_coordinates = get_fingertip_coordinates(mp_hands, detected_image.shape[:2], hand_landmarks)
 
                     # Gets the key hovered
                     boarder_values = get_min_max(corners, ids)
-                    width = get_border_dimensions(boarder_values)[1]
-                    key_length = get_key_length(width)
-                    key_hovered = get_key_hovered(fingertip_coordinates, key_length, boarder_values)
-                    print(fingertip_coordinates, key_hovered)
+                    key_width = get_key_width(get_border_dimensions(boarder_values)[1])
+                    key_hovered = get_key_hovered(fingertip_coordinates, key_width, boarder_values)
+                    print(f'Finger at {fingertip_coordinates} pressed {key_hovered}')
 
                 # final_image = cv2.cvtColor(detected_image, cv2.COLOR_GRAY2BGR)
-                cv2.imshow('HomePiano: My AR Piano', mp_img)
+                cv2.imshow('HomePiano: My AR Piano', detected_image)
                 
-                if cv2.waitKey(1) & 0xFF == ord('q'):
+                if cv2.waitKey(1) & 0xFF == ord('q'): 
                     break
         
         cap.release()

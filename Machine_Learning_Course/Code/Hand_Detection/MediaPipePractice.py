@@ -2,7 +2,7 @@
 
 import cv2
 import mediapipe as mp
-import pandas as pd
+# import pandas as pd
 import numpy as np
 
 def screenshot(image):
