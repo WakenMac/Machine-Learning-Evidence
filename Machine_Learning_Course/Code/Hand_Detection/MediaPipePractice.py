@@ -26,7 +26,7 @@ with mp_hands.Hands(
     max_num_hands=2) as hands:
 
     # Start the video capture from the webcam (device 0)
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
 
     # Check if the webcam is opened successfully
     if not cap.isOpened():
