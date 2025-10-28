@@ -3,6 +3,10 @@ from cv2 import aruco
 import mediapipe as mp
 import numpy as np
 
+# Details were taken from (L = 640 x W = 480) dimension resized image
+KNOWN_AREA = 25359.50
+KNOWN_DISTANCE = 100    # In Centimeters
+
 def init_detector():
     """
     Initializes the aruco detector.
@@ -36,10 +40,11 @@ def generate_boarder_points(corners, ids):
     points = [[], [], [], []]
 
     for i, corner_set in enumerate(corners):
-        if i > 1:
+        if i > 1 and ids[i] > 1:
             return None
+        temp_i = 1 if i >= 1 else 0
         pts = corner_set[0].astype(int)
-        points[ids[i][0]] = pts[corner_idx[ids[i][0]]].tolist()
+        points[ids[i][0]] = pts[corner_idx[ids[temp_i][0]]].tolist()
 
     # Trick to get the remaining bottom corners
     # The piano has a 2:3 ratio with its height and width respectively.
@@ -63,6 +68,7 @@ def draw_boarder(image, corners, ids):
 
     @return   The original image (If there are a lack of corners or ids), or an annotated image with the ArUco marker border or the piano border.
     """
+
     # if ids is None or len(ids) != 4 or len(corners) != 4:
     if ids is None or len(ids) != 2 or len(corners) != 2:
         return image
@@ -123,14 +129,14 @@ def get_fingertip_coordinates(mp_hands, shape:list, hand_landmarks):
     fingertip_coordinates[1] = int(h * fingertip_coordinates[1])
     return fingertip_coordinates
 
-def get_key_width(boarder_width:int):
+def get_key_width(boarder_width:int) -> int:
     """
     Gets the length for each key
     @returns    An integer representing the width for each key
     """
     return int(boarder_width/ 9)
 
-def get_key_hovered(fingertip_coordinates:list, key_width:int, boarder_values:dict):
+def get_key_hovered(fingertip_coordinates:list, key_width:int, boarder_values:dict) -> str:
     """
     Finds which key the fingertip is hovering over.
     The results may be inaccurate for slanted boarders (i.e., AR Piano is rotated).
@@ -225,13 +231,48 @@ def get_key_hovered(fingertip_coordinates:list, key_width:int, boarder_values:di
     else:
         return 'NA'
 
+def get_aruco_area(corners) -> int :
+    """
+    Gets the average area for all ArUco markers detected in the image.
 
-def main():
-    cap = cv2.VideoCapture(1)
+    @param corners    The corners of the ArUco markers detected
+    @returns          The average area of all markers detected
+    """
+
+    if corners is None or len(corners) == 0:
+        return -1
+    
+    total_area = 0
+    for corner_set in corners:
+        pts = corner_set[0].astype(int)
+        total_area += cv2.contourArea(pts)
+    return int(total_area / len(corners))
+
+def get_piano_distance(corners) -> float:
+    new_area = get_aruco_area(corners)
+
+    # Corners are not present
+    if new_area == -1:
+        return -1
+
+    # Uses the Pinhole Camera Model
+    return KNOWN_DISTANCE * (KNOWN_AREA / new_area) ** 0.5
+    
+
+def main(camera_index:int):
+    """
+    Main method to run the AR Piano Model.
+
+    @param camera_index:int     The index on which camera to use
+                                0 for DroidCam, 1 for Laptop Cam
+    """
+    cap = cv2.VideoCapture(camera_index)
     aruco_detector = init_detector()
     hand_detector, mp_hands, mp_drawing = init_media_pipe_tools()
+
     detect_hands = mark_hands = False
     results = None
+    distance = 0
 
     if not cap.isOpened():
         print('Unable to access camera feed.')
@@ -252,6 +293,7 @@ def main():
                 corners, ids, _ = aruco_detector.detectMarkers(img)
                 detected_image = aruco.drawDetectedMarkers(img, corners, ids)
                 detected_image = draw_boarder(img, corners, ids)
+                distance = get_piano_distance(corners)
 
                 if corners is not None and ids is not None and len(corners) == 2 and len(ids) == 2:
                     detect_hands = True
@@ -275,7 +317,12 @@ def main():
                     boarder_values = get_min_max(corners, ids)
                     key_width = get_key_width(get_border_dimensions(boarder_values)[1])
                     key_hovered = get_key_hovered(fingertip_coordinates, key_width, boarder_values)
-                    print(f'Finger at {fingertip_coordinates} pressed {key_hovered}')
+                    print(f'Finger at {fingertip_coordinates} pressed {key_hovered} with distance of {distance}')
+                
+                # Pa plug nalang ng audio player natin here please~
+                # I left some code documentations na din for the get_key_hovered() method
+                if key_hovered != 'NA':
+                    pass
 
                 # final_image = cv2.cvtColor(detected_image, cv2.COLOR_GRAY2BGR)
                 cv2.imshow('HomePiano: My AR Piano', detected_image)
@@ -286,5 +333,8 @@ def main():
         cap.release()
         cv2.destroyAllWindows()
 
-main()
+# For DroidCam Client
+main(0)
 
+# For Laptop Webcam
+# main(1)
