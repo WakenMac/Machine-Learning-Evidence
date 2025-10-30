@@ -1,3 +1,13 @@
+# Author: Waken Cean C. Maclang
+# Date Last Edited: October 31, 2025
+# Course: Machine Learning
+# Task: Learning Evidence
+
+# ArucoArea.py 
+#     A test program that gets the pixel area of an detected ArUco marker based on an uploaded picture
+
+# Works with Python 3.10.0
+
 import cv2
 import numpy as np
 

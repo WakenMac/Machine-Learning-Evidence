@@ -1,10 +1,20 @@
+# Author: Waken Cean C. Maclang
+# Date Last Edited: October 31, 2025
+# Course: Machine Learning
+# Task: Learning Evidence
+
+# DetectArucoLive.py 
+#     It consists of the entire Algorithmic Framework to Detect the AR Piano and Hands, whilst playing the piano key.
+
+# Works with Python 3.10.0
+
 import cv2
 from cv2 import aruco
 import mediapipe as mp
 import numpy as np
 
 # Details were taken from (L = 640 x W = 480) dimension resized image
-KNOWN_AREA = 25359.50
+KNOWN_AREA = 25360
 KNOWN_DISTANCE = 100    # In Centimeters
 
 def init_detector():
@@ -323,10 +333,11 @@ def main(camera_index:int):
                 # I left some code documentations na din for the get_key_hovered() method
                 if key_hovered != 'NA':
                     pass
-
+                
                 # final_image = cv2.cvtColor(detected_image, cv2.COLOR_GRAY2BGR)
                 cv2.imshow('HomePiano: My AR Piano', detected_image)
-                
+
+                # Code to end reading the image.
                 if cv2.waitKey(1) & 0xFF == ord('q'): 
                     break
         
