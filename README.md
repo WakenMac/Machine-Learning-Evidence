@@ -29,6 +29,10 @@ Machine_Learning_Evidence
 │   │   │   └── Detecting_an_aruco_marker
 │   │   │       ├── DetectAruco.py
 │   │   │       └── DetectArucoLive.py
+│   │   ├── Dataset_Generation
+│   │   │       ├── GenerateDataset.py
+│   │   │       └── VideoPlayer.py
+│   │   |
 │   │   └── Hand_Detection
 │   │       ├── DroidCam.py
 │   │       ├── ImageReader.py
