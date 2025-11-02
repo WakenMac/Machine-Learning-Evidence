@@ -18,6 +18,7 @@ This project is made to build an Augmented Reality (AR) piano using a mix of Ope
 
 The code has the following file structure
 
+```{txt}
 Machine_Learning_Evidence
 ├── Machine_Learning_Course
 │   ├── Code
@@ -54,6 +55,7 @@ Machine_Learning_Evidence
 ├── LICENSE
 ├── README.md
 └── requirements.txt
+```
 
 \
 To get started, make sure you install all required dependencies.
