@@ -15,9 +15,10 @@ from yt_dlp import YoutubeDL
 ydl_opts = {
     'noplaylist': True, # Only download single video, not a playlist
     'windowsfilenames':True,
-    'paths': {"home": r"C:\\Users\\Waks\\Downloads\\USEP BSCS\\School Work\\BSCS 3 - 1st Sem\\CSDS 314 - Machine Learning\\LE\\Machine-Learning-Evidence\\Machine_Learning_Course\\Piano_Recordings"},
+    'paths': {"home": r"Machine_Learning_Course\\Piano_Recordings"},
     'outtmpl': '%(title)s.%(ext)s', # Output filename template
-    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+    'format': 'bestvideo[height<=720][height>=480][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+    'merge_output_format':"mp4",
     "quiet":True
 }
 
@@ -27,11 +28,12 @@ ydl = YoutubeDL(ydl_opts)
 # Download a video
 # ydl.download(['https://youtu.be/YMO97BPklrs?list=RDYMO97BPklrs'])
 
-file = open('C:\\Users\\Waks\\Downloads\\USEP BSCS\\School Work\\BSCS 3 - 1st Sem\\CSDS 314 - Machine Learning\\LE\\Machine-Learning-Evidence\\Machine_Learning_Course\\Code\\Video_Downloader\\Waks_YT_Links.txt', 'r')
+file = open('Machine_Learning_Course\\Code\\Video_Downloader\\Waks_YT_Links.txt', 'r')
+dl_file = open('Machine_Learning_Course\\Code\\Video_Downloader\\Downloaded_YT_Links.txt', 'r')
 
 urls = [line.strip() for line in file]
 
 for url in urls:
     # Or extract information without downloading
-    info_dict = ydl.extract_info(url, download=False)
+    info_dict = ydl.extract_info(url, download=True)
     print(f'Downloaded: {info_dict.get("title")} Duration: {info_dict.get("duration")} secs.')

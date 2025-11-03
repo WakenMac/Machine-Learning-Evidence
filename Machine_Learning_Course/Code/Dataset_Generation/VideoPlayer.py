@@ -8,6 +8,7 @@
 
 # Works with Python 3.10.0
 
+import os
 import cv2
 import pandas as pd
 import mediapipe as mp
@@ -28,6 +29,14 @@ class VideoPlayer:
             [3] Saving the hand heuristics and movements to the dataset
     """
 
+    # Static Final/Constant Variables
+    __VID_PATH = 'Machine_Learning_Course\\Piano_Recordings'
+    __VID_LIST = os.listdir(__VID_PATH)
+
+    @classmethod
+    def get_vid_list(cls):
+        return cls.__VID_LIST
+
     def __init__(self, 
                  vid_path:str = 'Machine_Learning_Course\\Trial Recordings\\[1] ArUco Boarder.mp4',
                  dataset_path:str = None,
@@ -45,6 +54,7 @@ class VideoPlayer:
         # Time variables
         self.frame_count = 1
         self.secs = self.mins = 0
+
 
     def _init_media_pipe_tools(self):
         """
@@ -82,10 +92,9 @@ class VideoPlayer:
 
         # Adds delay to the time cv2 renders frames.
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-        if with_delay:
-            self.delay = int(500 / self.fps)
-        else:
-            self.delay = -1
+        self.delay = 15 if self.fps == 25 else int(500 / self.fps) if with_delay else -1
+        
+        print(self.fps, self.delay)
 
     def _append_dataset(self, img):
         """
@@ -100,7 +109,7 @@ class VideoPlayer:
         # cv2.putText() related variables
         org = (10, 30)
         fontFace = cv2.FONT_HERSHEY_SIMPLEX
-        fontScale = 1
+        fontScale = 0.8
         color = (255, 255, 255)  # White
         thickness = 2
         lineType = cv2.LINE_AA
@@ -125,7 +134,7 @@ class VideoPlayer:
             frame = cv2.resize(frame, (960, 540))
 
             # Calculate the time
-            float_secs = self.frame_count / 60
+            float_secs = self.frame_count / self.fps
             secs = int(float_secs % 60)
             mins = int(float_secs / 60)
 
@@ -151,5 +160,13 @@ class VideoPlayer:
         self.cap.release()
         cv2.destroyAllWindows()
 
-player = VideoPlayer('Machine_Learning_Course\\Trial Recordings\\[1] ArUco Boarder.mp4', None, True)
+    def get_video_player(video_index:int = 0, dataset_path:str = None):
+        if video_index < 0 or video_index > len(VideoPlayer.get_vid_list()) - 1:
+            print('ERROR: Invalid video index passed.')
+            return
+
+        return VideoPlayer(os.path.join(VideoPlayer._VideoPlayer__VID_PATH, VideoPlayer.get_vid_list()[video_index]), dataset_path, True)
+
+print(VideoPlayer.get_vid_list())
+player = VideoPlayer.get_video_player(0)
 player.runVideo()
