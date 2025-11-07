@@ -297,7 +297,7 @@ def main(camera_index:int):
                 print('Unable to read frame')
             else:
                 # img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                img = frame.copy()
+                img = cv2.resize(frame, (960, 540))
 
                 # Detects the ArUco Markers
                 corners, ids, _ = aruco_detector.detectMarkers(img)
@@ -345,7 +345,7 @@ def main(camera_index:int):
         cv2.destroyAllWindows()
 
 # For DroidCam Client
-main(0)
+# main(0)
 
 # For Laptop Webcam
-# main(1)
+main(1)

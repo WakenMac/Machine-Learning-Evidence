@@ -40,7 +40,8 @@ class VideoPlayer:
     def __init__(self, 
                  vid_path:str = 'Machine_Learning_Course\\Trial Recordings\\[1] ArUco Boarder.mp4',
                  dataset_path:str = None,
-                 with_delay:bool = True):
+                 with_delay:bool = True,
+                 starting_frame: int = 0):
         
         # Prepares the video
         self._prepareVideo(vid_path, with_delay)
@@ -55,6 +56,8 @@ class VideoPlayer:
         self.frame_count = 1
         self.secs = self.mins = 0
 
+        starting_frame = starting_frame if starting_frame >= 0 else 0
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, starting_frame)
 
     def _init_media_pipe_tools(self):
         """
@@ -95,6 +98,18 @@ class VideoPlayer:
         self.delay = 15 if self.fps == 25 else int(500 / self.fps) if with_delay else -1
         
         print(self.fps, self.delay)
+
+    def detect_hands(self, img:None):
+        if img is None:
+            return None
+        
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        results = self.hand_detector.process(img_rgb)
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                self.mp_drawing.draw_landmarks(img_rgb, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+
+        return cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
 
     def _append_dataset(self, img):
         """
@@ -143,6 +158,7 @@ class VideoPlayer:
                                 thickness, lineType)
             self.frame_count += 1
 
+            frame = self.detect_hands(frame)
             # append_dataset
 
             cv2.imshow(self.file_name, frame)
@@ -160,13 +176,15 @@ class VideoPlayer:
         self.cap.release()
         cv2.destroyAllWindows()
 
-    def get_video_player(video_index:int = 0, dataset_path:str = None):
+    def get_video_player(video_index:int = 0, dataset_path:str = None, starting_frame:int = 0):
         if video_index < 0 or video_index > len(VideoPlayer.get_vid_list()) - 1:
             print('ERROR: Invalid video index passed.')
             return
 
-        return VideoPlayer(os.path.join(VideoPlayer._VideoPlayer__VID_PATH, VideoPlayer.get_vid_list()[video_index]), dataset_path, True)
+        return VideoPlayer(os.path.join(VideoPlayer._VideoPlayer__VID_PATH, VideoPlayer.get_vid_list()[video_index]), 
+                           dataset_path, True, starting_frame)
 
 print(VideoPlayer.get_vid_list())
-player = VideoPlayer.get_video_player(0)
+# player = VideoPlayer.get_video_player(1, None, 240)
+player = VideoPlayer.get_video_player(0, None, 0)
 player.runVideo()
