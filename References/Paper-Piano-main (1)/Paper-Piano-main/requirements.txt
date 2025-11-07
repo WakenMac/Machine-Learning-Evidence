@@ -1,0 +1,8 @@
+numpy
+matplotlib
+tensorflow
+opencv-python
+mediapipe
+scipy
+pygame
+shapely
