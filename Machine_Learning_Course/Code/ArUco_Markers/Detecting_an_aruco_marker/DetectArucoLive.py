@@ -180,13 +180,15 @@ def main(camera_index:int):
             success, frame = cap.read()
             if not success:
                 print('Unable to read frame')
+            else:
+                # img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                img = cv2.resize(frame, (960, 540))
                 continue
 
-            img = cv2.resize(frame, (960, 540))
+            img = frame.copy()
             corners, ids, _ = aruco_detector.detectMarkers(img)
             detected_image = aruco.drawDetectedMarkers(img, corners, ids)
             detected_image = draw_boarder(img, corners, ids)
-            distance = get_piano_distance(corners)
 
             detect_hands = corners is not None and ids is not None and len(corners) == 2 and len(ids) == 2
 
