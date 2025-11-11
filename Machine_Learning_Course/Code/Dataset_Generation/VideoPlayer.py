@@ -11,7 +11,9 @@
 import os
 import cv2
 import pandas as pd
+import numpy as np
 import mediapipe as mp
+from Machine_Learning_Course.Code.Dataset_Generation.QueuedList import QueuedList as ql
 
 class VideoPlayer:
     """
@@ -41,7 +43,9 @@ class VideoPlayer:
                  vid_path:str = 'Machine_Learning_Course\\Trial Recordings\\[1] ArUco Boarder.mp4',
                  dataset_path:str = None,
                  with_delay:bool = True,
-                 starting_frame: int = 0):
+                 starting_frame: int = 0,
+                 key_distance_cm:float = 0,
+                 key_distance_px:int = 0):
         
         # Prepares the video
         self._prepareVideo(vid_path, with_delay)
@@ -53,11 +57,34 @@ class VideoPlayer:
         self.dataset = self._init_dataset(dataset_path)
 
         # Time variables
-        self.frame_count = 1
+        self.frame_count = starting_frame if starting_frame >= 0 else 0
         self.secs = self.mins = 0
 
-        starting_frame = starting_frame if starting_frame >= 0 else 0
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, starting_frame)
+        # Dataset dictionary
+        self.temp_data = {
+            'video_index': [],
+            'frame': [],
+            'fingertip': 'index',
+            'tip2dip': [],
+            'tip2pip': [],
+            'tip2mcp': [],
+            'tip2wrist': [],
+            'velocity_size':[],     # The change in average joint distance (tip2dip ... tip2mcp)
+            'velocity_disp':[],     # The distance from the previous point to the new point
+            'distance_cm': 100,     # Distance of the camera to the piano
+            'is_hovering':[]
+        }
+
+        # Prepare variables for velocity calculation
+        fps = int(self.cap.get(cv2.CAP_PROP_FPS))
+        self.ql_size = ql(fps)
+        self.ql_disp = ql(fps)
+        self.old_coor = None
+        self.new_coor = None
+
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.frame_count)
+        self.KNOWN_DISTANCE = key_distance_cm
+        self.KNOWN_PX_WIDTH = key_distance_px
 
     def _init_media_pipe_tools(self):
         """
@@ -67,7 +94,7 @@ class VideoPlayer:
         return [mp.solutions.hands.Hands(
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
-            max_num_hands=2
+            max_num_hands=1
         ), mp.solutions.hands, mp.solutions.drawing_utils]
 
     def _init_dataset(self, dataset_path):
@@ -99,7 +126,20 @@ class VideoPlayer:
         
         print(self.fps, self.delay)
 
-    def detect_hands(self, img:None):
+    def print_video_info(self):
+        string = f'''
+            Now playing video. Details:
+            Playing video feed from: {self.vid_path} 
+            Frames per sec: {self.fps}
+        '''
+        print(string)
+
+    def get_hand_pixel_coordinates(self, hand_landmarks, hand_joint_index: int = 0):
+            index_x = hand_landmarks.landmark[hand_joint_index].x
+            index_y = hand_landmarks.landmark[hand_joint_index].y
+            return [int(index_x * 960), int(index_y * 540)]
+
+    def detect_hands(self, img:None, is_hovering:bool = True):
         if img is None:
             return None
         
@@ -107,18 +147,72 @@ class VideoPlayer:
         results = self.hand_detector.process(img_rgb)
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                self.mp_drawing.draw_landmarks(img_rgb, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+                pixel_x, pixel_y = self.get_hand_pixel_coordinates(hand_landmarks, self.mp_hands.HandLandmark.INDEX_FINGER_TIP)
+                self.append_dataset(hand_landmarks, is_hovering)
+                cv2.circle(img_rgb, (pixel_x, pixel_y), 2, (0, 255, 0), thickness = 3)
 
+                # Draws the hand points to the image
+                # self.mp_drawing.draw_landmarks(img_rgb, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
         return cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
 
-    def _append_dataset(self, img):
+    def append_dataset(self, hand_landmarks, is_hovering:bool = True):
         """
 
         """
 
-        pass
+        def get_point_distance(pointA, pointB) -> int:
+            """
+            Gets the PIXEL distance/displacement among two points given their x and y axis
+            
+            @param pointA   A list of x and y coordinate of the first Point 
+            @param pointB   A list of x and y coordinate of the second Point
+
+            @returns        The integer distance between 2 points
+            """
+            x = int(pointA[0] - pointB[0]) ** 2
+            y = int(pointA[1] - pointB[1]) ** 2
+            return np.sqrt((x + y))
+
+        # TODO: Implement the 2 types of velovity given the FPS
+        dict_keys = ['tip2dip', 'tip2pip', 'tip2mcp', 'tip2wrist']
+        indices = [
+            [self.mp_hands.HandLandmark.INDEX_FINGER_TIP, self.mp_hands.HandLandmark.INDEX_FINGER_DIP],
+            [self.mp_hands.HandLandmark.INDEX_FINGER_TIP, self.mp_hands.HandLandmark.INDEX_FINGER_PIP],
+            [self.mp_hands.HandLandmark.INDEX_FINGER_TIP, self.mp_hands.HandLandmark.INDEX_FINGER_MCP],
+            [self.mp_hands.HandLandmark.INDEX_FINGER_TIP, self.mp_hands.HandLandmark.WRIST],
+        ]
+        size = 0
+        for i in range(4):
+            dist = get_point_distance(self.get_hand_pixel_coordinates(hand_landmarks, indices[i][0]),
+                                      self.get_hand_pixel_coordinates(hand_landmarks, indices[i][1]))
+            size += dist
+            self.temp_data[dict_keys[i]].append(dist)
+        self.temp_data['frame'].append(self.frame_count)
+        self.temp_data['is_hovering'].append(is_hovering)
+        
+        # Adds the calculations to the QueuedList
+        if self.frame_count == 1 or self.old_coor is None:
+            self.new_coor = self.get_hand_pixel_coordinates(hand_landmarks, indices[1][0])
+            self.ql_disp.append(0)
+        else:
+            self.new_coor = self.get_hand_pixel_coordinates(hand_landmarks, indices[1][0])
+            disp = get_point_distance(self.old_coor, self.new_coor)
+            self.ql_disp.append(disp)
+        # self.ql_size.append(self.temp_data['tip2wrist'][-1])
+        self.ql_size.append(size / 4)
+
+        self.temp_data['velocity_disp'].append(self.ql_disp.get_mean())
+        self.temp_data['velocity_size'].append(self.ql_size.get_mean())
+
+        self.old_coor = self.new_coor
+
+    def calculate_distance_formula(self, number_of_keys:int = 1):
+        numerator = 960 / (number_of_keys * 2.3)
+        print(f'Distance = focal_length / {numerator}')
+        return numerator
 
     def runVideo(self):
+        self.print_video_info()
         pause = False
 
         # cv2.putText() related variables
@@ -158,8 +252,8 @@ class VideoPlayer:
                                 thickness, lineType)
             self.frame_count += 1
 
+            # Method to detect the hands and add the coordinates to the dataframe
             frame = self.detect_hands(frame)
-            # append_dataset
 
             cv2.imshow(self.file_name, frame)
 
@@ -176,15 +270,21 @@ class VideoPlayer:
         self.cap.release()
         cv2.destroyAllWindows()
 
+        temp_df = pd.DataFrame(self.temp_data)
+        print(temp_df.drop(['frame', 'video_index', 'fingertip', 'is_hovering', 'distance_cm'], axis=1).head(20))      
+
     def get_video_player(video_index:int = 0, dataset_path:str = None, starting_frame:int = 0):
         if video_index < 0 or video_index > len(VideoPlayer.get_vid_list()) - 1:
             print('ERROR: Invalid video index passed.')
             return
 
-        return VideoPlayer(os.path.join(VideoPlayer._VideoPlayer__VID_PATH, VideoPlayer.get_vid_list()[video_index]), 
-                           dataset_path, True, starting_frame)
+        player = VideoPlayer(os.path.join(VideoPlayer._VideoPlayer__VID_PATH, VideoPlayer.get_vid_list()[video_index]), 
+                            dataset_path, False, starting_frame)
+        player.temp_data['video_index'] = video_index
+        return player
 
 print(VideoPlayer.get_vid_list())
-# player = VideoPlayer.get_video_player(1, None, 240)
-player = VideoPlayer.get_video_player(0, None, 0)
+# player = VideoPlayer.get_video_player(2, None, 240)
+# player = VideoPlayer.get_video_player(1, None, 110)
+player = VideoPlayer.get_video_player(0, None, 114)
 player.runVideo()

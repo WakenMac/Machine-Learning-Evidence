@@ -32,6 +32,7 @@ Machine_Learning_Evidence
 │   │   │       └── DetectArucoLive.py
 │   │   ├── Dataset_Generation
 │   │   │       ├── GenerateDataset.py
+│   │   │       ├── QueuedList.py
 │   │   │       └── VideoPlayer.py
 │   │   |
 │   │   └── Hand_Detection
