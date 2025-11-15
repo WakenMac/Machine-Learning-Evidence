@@ -62,7 +62,7 @@ class VideoPlayer:
 
         # Dataset dictionary
         self.temp_data = {
-            'video_index': [],
+            'video_name': self.file_name,
             'frame': [],
             'fingertip': 'index',
             'tip2dip': [],
@@ -71,9 +71,11 @@ class VideoPlayer:
             'tip2wrist': [],
             'velocity_size':[],     # The change in average joint distance (tip2dip ... tip2mcp)
             'velocity_disp':[],     # The distance from the previous point to the new point
-            'distance_cm': 100,     # Distance of the camera to the piano
+            'distance_cm': 1,     # Distance of the camera to the piano (meters)
             'is_hovering':[]
         }
+
+        self.temp_key_hist = []
 
         # Prepare variables for velocity calculation
         fps = int(self.cap.get(cv2.CAP_PROP_FPS))
@@ -122,15 +124,14 @@ class VideoPlayer:
 
         # Adds delay to the time cv2 renders frames.
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-        self.delay = 15 if self.fps == 25 else int(500 / self.fps) if with_delay else -1
-        
-        print(self.fps, self.delay)
+        self.delay = 15 if self.fps == 25 else int(500 / self.fps) if with_delay else 1
 
     def print_video_info(self):
         string = f'''
             Now playing video. Details:
             Playing video feed from: {self.vid_path} 
             Frames per sec: {self.fps}
+            Delay: {self.delay}
         '''
         print(string)
 
@@ -214,6 +215,9 @@ class VideoPlayer:
     def runVideo(self):
         self.print_video_info()
         pause = False
+        is_hovering = True
+        is_raised = True
+        last_key = None
 
         # cv2.putText() related variables
         org = (10, 30)
@@ -250,10 +254,9 @@ class VideoPlayer:
             text = f'Frame #{self.frame_count}, Time: {mins:02}:{secs:02}'
             frame = cv2.putText(frame, text, org, fontFace, fontScale, color, 
                                 thickness, lineType)
-            self.frame_count += 1
 
             # Method to detect the hands and add the coordinates to the dataframe
-            frame = self.detect_hands(frame)
+            frame = self.detect_hands(frame, is_hovering)
 
             cv2.imshow(self.file_name, frame)
 
@@ -261,17 +264,40 @@ class VideoPlayer:
 
             if key == 27:   # ESC key
                 break
+
+            elif key == ord('q'):
+                if last_key != ord('q') and is_hovering and is_raised:
+                    print('You pressed the \'q\' key.')
+                    is_hovering = False 
+                    is_raised = False\
+            
+            elif key == 255 and last_key == ord('q'):
+                is_hovering = True
+                is_raised = True
+
             elif key == ord(' '):
                 pause = not pause
+
             elif key == ord('r'):
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 self.frame_count = 1
+
+            self.frame_count += 1
+            last_key = key
+            self.temp_key_hist.append(last_key)
 
         self.cap.release()
         cv2.destroyAllWindows()
 
         temp_df = pd.DataFrame(self.temp_data)
-        print(temp_df.drop(['frame', 'video_index', 'fingertip', 'is_hovering', 'distance_cm'], axis=1).head(20))      
+        print(temp_df.drop(['frame', 'video_index', 'video_name', 'fingertip', 'is_hovering', 'distance_cm'], axis=1).head(20))      
+        df = pd.DataFrame(temp_df)
+        print('\n\nNumber of key presses: ', df['is_hovering'][df['is_hovering'] == False].count())
+
+        if self.dataset.size == 0:
+            df.to_csv('Machine_Learning_Course\Code\Dataset_Generation\my_temp_data.csv', index=True)
+        else:
+            pd.concat([self.dataset, df], axis=0, join='outer', ignore_index=True).to_csv('Machine_Learning_Course\Code\Dataset_Generation\my_temp_data.csv')
 
     def get_video_player(video_index:int = 0, dataset_path:str = None, starting_frame:int = 0):
         if video_index < 0 or video_index > len(VideoPlayer.get_vid_list()) - 1:
@@ -282,9 +308,3 @@ class VideoPlayer:
                             dataset_path, False, starting_frame)
         player.temp_data['video_index'] = video_index
         return player
-
-print(VideoPlayer.get_vid_list())
-# player = VideoPlayer.get_video_player(2, None, 240)
-# player = VideoPlayer.get_video_player(1, None, 110)
-player = VideoPlayer.get_video_player(0, None, 114)
-player.runVideo()
