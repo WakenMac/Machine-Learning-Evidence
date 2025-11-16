@@ -12,6 +12,7 @@ import json
 import zipfile
 import urllib.request
 import logging
+import argparse
 from pathlib import Path
 from typing import Dict, Tuple, List, Optional
 import numpy as np
@@ -31,8 +32,8 @@ class PianoMotion10MDownloader:
     """
     
     # GitHub URLs
-    GITHUB_REPO = "https://github.com/agnJason/PianoMotion10M"
-    GITHUB_ZIP = "https://github.com/agnJason/PianoMotion10M/archive/refs/heads/main.zip"
+    GITHUB_REPO = "https://github.com/google-research-datasets/pianomotion-10m"
+    GITHUB_ZIP = "https://github.com/google-research-datasets/pianomotion-10m/archive/refs/heads/main.zip"
     
     # Expected dataset structure
     EXPECTED_STRUCTURE = {
@@ -50,7 +51,8 @@ class PianoMotion10MDownloader:
             use_cache: Use cached data if available
         """
         if output_dir is None:
-            output_dir = Path(__file__).parent.parent.parent / "Data" / "PianoMotion10M"
+            # Updated path to reflect manual data placement by user (Code/Data_Pipeline/PianoMotion10M)
+            output_dir = Path(__file__).parent / "PianoMotion10M"
         
         self.output_dir = Path(output_dir)
         self.use_cache = use_cache
@@ -208,8 +210,8 @@ class PianoMotion10MParser:
     
     def list_subjects(self) -> List[str]:
         """Get list of all subjects in dataset."""
-        subjects = sorted([d.name for d in self.data_dir.iterdir() 
-                          if d.is_dir() and d.name.startswith('subject_')])
+        subjects = sorted([d.name for d in self.data_dir.iterdir()
+                          if d.is_dir() and d.name not in ['midi']])
         logger.info(f"Found {len(subjects)} subjects: {subjects[:5]}{'...' if len(subjects) > 5 else ''}")
         return subjects
     
@@ -220,6 +222,17 @@ class PianoMotion10MParser:
             logger.warning(f"Subject {subject} not found")
             return []
         
+        # Check for nested structure common in PianoMotion10M partitions
+        if subject in ['audio-002', 'annotation-001']:
+            # Assuming sequences are nested under 'audio' or similar sub-directory
+            # Based on file list, audio-002 has audio/ which contains subject IDs (e.g., 688183660)
+            data_root = subject_dir / 'audio'
+            if data_root.exists():
+                # Sequences are the directories under data_root
+                sequences = sorted([d.name for d in data_root.iterdir() if d.is_dir()])
+                return sequences
+            
+        # Default behavior for standard subject directories
         sequences = sorted([d.name for d in subject_dir.iterdir() if d.is_dir()])
         return sequences
     
@@ -371,17 +384,34 @@ class PianoMotion10MParser:
         Returns:
             Dictionary with pose, MIDI, and metadata
         """
-        sequence_dir = self.data_dir / subject / sequence
+        if subject in ['audio-002', 'annotation-001']:
+            # Handle nested structure: data_dir / partition / audio / sequence
+            sequence_dir = self.data_dir / subject / 'audio' / sequence
+        else:
+            # Default structure: data_dir / subject / sequence
+            sequence_dir = self.data_dir / subject / sequence
         
         if not sequence_dir.exists():
-            logger.warning(f"Sequence not found: {subject}/{sequence}")
-            return None
+            # Check if the sequence is nested one level deeper (e.g., under the subject ID itself)
+            sequence_dir_nested = self.data_dir / subject / sequence
+            if sequence_dir_nested.exists():
+                sequence_dir = sequence_dir_nested
+            else:
+                logger.warning(f"Sequence not found: {subject}/{sequence}")
+                return None
         
         logger.info(f"\n📂 Extracting: {subject}/{sequence}")
         
         # Find files
         pose_files = list(sequence_dir.glob("*pose*")) + list(sequence_dir.glob("*hand*"))
-        midi_files = list(sequence_dir.glob("*.mid")) + list(sequence_dir.glob("*midi*"))
+        
+        # Search for MIDI files in the dedicated MIDI directory structure
+        midi_dir = self.data_dir / 'midi' / 'midi' / sequence
+        midi_files = list(midi_dir.glob("*.mid"))
+        
+        # Fallback to sequence directory search if needed (original logic)
+        if not midi_files:
+            midi_files = list(sequence_dir.glob("*.mid")) + list(sequence_dir.glob("*midi*"))
         annotation_files = list(sequence_dir.glob("*annotation*"))
         
         result = {
@@ -571,39 +601,68 @@ class PianoMotion10MFeatureExtractor:
 def main():
     """Main execution."""
     
+    parser = argparse.ArgumentParser(description="Download and parse PianoMotion10M dataset.")
+    parser.add_argument("--output-dir", type=str, default=None,
+                        help="Custom output directory for the dataset.")
+    parser.add_argument("--skip-download", action="store_true",
+                        help="Skip the download step and proceed directly to parsing/feature extraction.")
+    args = parser.parse_args()
+    
     print("\n" + "="*80)
     print("🎹 REAL PIANOMOTION10M DATASET - DOWNLOAD & PARSE")
     print("="*80 + "\n")
     
     # Define paths
-    dataset_dir = Path(__file__).parent.parent.parent / "Data" / "PianoMotion10M"
+    if args.output_dir:
+        dataset_dir = Path(args.output_dir)
+    else:
+        dataset_dir = Path(__file__).parent.parent.parent / "Data" / "PianoMotion10M"
     
-    # Step 1: Download
-    print("STEP 1: Download Dataset")
-    print("-" * 80)
-    downloader = PianoMotion10MDownloader(str(dataset_dir))
+    # Step 1: Download (Skipped if --skip-download is used)
+    if not args.skip_download:
+        print("STEP 1: Download Dataset")
+        print("-" * 80)
+        downloader = PianoMotion10MDownloader(str(dataset_dir))
+        
+        if not downloader.download():
+            print("Failed to download dataset. Please check your internet connection.")
+            return
+    else:
+        print("STEP 1: Download Skipped (Manual download assumed)")
+        print("-" * 80)
+        # Ensure the directory exists for subsequent steps
+        dataset_dir.mkdir(parents=True, exist_ok=True)
     
-    if not downloader.download():
-        print("Failed to download dataset. Please check your internet connection.")
-        return
-    
-    # Step 2: Get info
+    # Step 2: Get info (Only if download was attempted or skipped)
     print("\nSTEP 2: Dataset Information")
     print("-" * 80)
+    downloader = PianoMotion10MDownloader(str(dataset_dir), use_cache=True)
     info = downloader.get_dataset_info()
     
     # Step 3: Parse
     print("\nSTEP 3: Parse Dataset")
     print("-" * 80)
-    parser = PianoMotion10MParser(str(dataset_dir))
-    
+    try:
+        parser = PianoMotion10MParser(str(dataset_dir))
+    except FileNotFoundError as e:
+        logger.error(f"Cannot proceed with parsing: {e}")
+        return
+
     subjects = parser.list_subjects()
+    if not subjects:
+        logger.error("No subjects found in the data directory. Check your manual extraction.")
+        return
+        
     print(f"\n✅ Found {len(subjects)} subjects")
     
-    # Extract first 5 sequences as example
-    print("\n📂 Extracting first 5 sequences...")
-    extracted_data = parser.extract_all_sequences(limit=5)
+    # Extract all sequences
+    print("\n📂 Extracting all sequences...")
+    extracted_data = parser.extract_all_sequences() # Removed limit=5 for full feature extraction
     
+    if not extracted_data:
+        logger.error("Failed to extract any sequence data.")
+        return
+        
     # Step 4: Extract features
     print("\nSTEP 4: Extract Features")
     print("-" * 80)
@@ -632,7 +691,7 @@ def main():
         print(combined_df['ground_truth_label'].value_counts())
     
     print("\n" + "="*80)
-    print("✅ DATASET DOWNLOAD AND PARSING COMPLETE!")
+    print("✅ DATASET PARSING AND FEATURE EXTRACTION COMPLETE!")
     print("="*80)
 
 

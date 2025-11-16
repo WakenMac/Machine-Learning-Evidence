@@ -18,7 +18,8 @@ class SetupHelper:
     
     def __init__(self):
         self.project_root = Path(__file__).parent.parent.parent
-        self.data_dir = self.project_root / "Data" / "PianoMotion10M"
+        # Updated path to reflect manual data placement by user
+        self.data_dir = self.project_root / "Code" / "Data_Pipeline" / "PianoMotion10M"
         self.code_dir = self.project_root / "Code" / "Data_Pipeline"
     
     def check_dependencies(self) -> bool:
@@ -76,7 +77,8 @@ class SetupHelper:
         
         try:
             script_path = self.code_dir / "DownloadRealPianoMotion10M.py"
-            subprocess.check_call([sys.executable, str(script_path)])
+            command = [sys.executable, str(script_path), "--output-dir", str(self.data_dir)]
+            subprocess.check_call(command)
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"Download failed: {e}")
@@ -101,7 +103,14 @@ class SetupHelper:
             print("  • Creating labeled training dataset")
             
             script_path = self.code_dir / "DownloadRealPianoMotion10M.py"
-            subprocess.check_call([sys.executable, str(script_path)])
+            # Pass custom output directory and skip download since data is manually placed
+            command = [
+                sys.executable,
+                str(script_path),
+                "--output-dir", str(self.data_dir),
+                "--skip-download"
+            ]
+            subprocess.check_call(command)
             
             # Check output
             feature_file = self.data_dir / "features_real_pianomotion10m.csv"
@@ -159,7 +168,7 @@ class SetupHelper:
 def main():
     """Main setup menu."""
     print("\n" + "="*80)
-    print("🎹 REAL PIANOMOTION10M - AUTOMATED SETUP")
+    print("REAL PIANOMOTION10M - AUTOMATED SETUP")
     print("="*80)
     print("\nThis script will help you:")
     print("  1. Download the real PianoMotion10M dataset from GitHub")
