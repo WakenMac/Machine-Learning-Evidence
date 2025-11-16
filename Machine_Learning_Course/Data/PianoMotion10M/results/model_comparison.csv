@@ -1,3 +1,0 @@
-Model,Accuracy,Precision,Recall,F1-Score,ROC-AUC,FPS,Inference (ms)
-SVM,0.9800,1.0000,0.9565,0.9778,0.9996,99888.16,0.01
-Random Forest,0.9600,0.9773,0.9348,0.9556,0.9966,1121.71,0.89
