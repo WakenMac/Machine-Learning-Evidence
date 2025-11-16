@@ -15,8 +15,8 @@ from ML_Pipeline_Prep import PianoMotionMLPipeline
 def quick_test():
     """Run a quick test of the pipeline."""
     
-    features_csv = Path(__file__).parent.parent.parent / "Data" / "PianoMotion10M" / "features.csv"
-    output_dir = Path(__file__).parent.parent.parent / "Data" / "PianoMotion10M" / "results"
+    features_csv = Path(__file__).parent / "PianoMotion10M" / "features.csv"
+    output_dir = Path(__file__).parent / "PianoMotion10M" / "results"
     
     print("🚀 Starting Quick Pipeline Test...\n")
     
