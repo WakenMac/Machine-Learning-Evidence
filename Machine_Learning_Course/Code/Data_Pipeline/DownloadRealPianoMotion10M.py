@@ -32,8 +32,8 @@ class PianoMotion10MDownloader:
     """
     
     # GitHub URLs
-    GITHUB_REPO = "https://github.com/google-research-datasets/pianomotion-10m"
-    GITHUB_ZIP = "https://github.com/google-research-datasets/pianomotion-10m/archive/refs/heads/main.zip"
+    GITHUB_REPO = "https://github.com/agnJason/PianoMotion10M"
+    GITHUB_ZIP = "https://github.com/agnJason/PianoMotion10M/archive/refs/heads/main.zip"
     
     # Expected dataset structure
     EXPECTED_STRUCTURE = {

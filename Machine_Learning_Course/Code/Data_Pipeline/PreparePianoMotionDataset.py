@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Tuple, List, Dict
 import json
 import logging
+from tqdm import tqdm
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -40,7 +41,7 @@ class PianoMotionDataProcessor:
     def load_annotations(self, annotation_file: str) -> np.ndarray:
         """
         Load 3D hand kinematics from annotation file.
-        Expected format: JSON or CSV with 3D coordinates for hand joints.
+        Expected format: JSON with 'left' or 'right' hand data.
         
         Args:
             annotation_file: Path to annotation file
@@ -56,18 +57,29 @@ class PianoMotionDataProcessor:
             if file_path.suffix == '.json':
                 with open(file_path, 'r') as f:
                     data = json.load(f)
-                # Convert to numpy array - adjust based on actual structure
-                if isinstance(data, dict) and 'frames' in data:
-                    frames = data['frames']
-                    return np.array([frame['joints'] if 'joints' in frame else frame for frame in frames])
-                else:
-                    return np.array(data)
-            
+
+                kinematics_data = data.get('right') or data.get('left')
+                if kinematics_data:
+                    processed_frames = []
+                    for frame_data in kinematics_data:
+                        # Pad to 63 if length is 62, assuming 21 joints
+                        if len(frame_data) == 62:
+                            frame_data.append(0)
+
+                        if len(frame_data) == 63:
+                            processed_frames.append(np.array(frame_data).reshape(21, 3))
+                        elif all(v == 0 for v in frame_data):
+                            processed_frames.append(np.zeros((21, 3)))
+                        else:
+                            logger.warning(f"Skipping frame with unexpected length {len(frame_data)} in {file_path}")
+                    return np.array(processed_frames)
+
+                logger.warning(f"Unknown JSON structure in {file_path}: 'left' or 'right' key not found.")
+                return None
+
             elif file_path.suffix in ['.csv', '.txt']:
                 data = np.loadtxt(file_path, delimiter=',')
-                # Reshape assuming format: (frames, features)
-                # For 21 hand joints with x, y, z: (frames, 21*3)
-                num_joints = 21  # Standard hand pose (MediaPipe/MANO)
+                num_joints = 21  # Assuming 21 joints for CSV as well
                 if data.shape[1] == num_joints * 3:
                     return data.reshape(-1, num_joints, 3)
                 return data
@@ -289,24 +301,32 @@ class PianoMotionDataProcessor:
         all_data = []
         
         # Find all kinematics and MIDI pairs
-        data_dirs = list(self.dataset_dir.glob("*/"))
+        annotation_base_dir = self.dataset_dir / "annotation" / "annotation"
+        midi_base_dir = self.dataset_dir / "midi" / "midi"
         
-        if not data_dirs:
-            logger.warning(f"No subdirectories found in {self.dataset_dir}")
+        subject_dirs = [d for d in annotation_base_dir.iterdir() if d.is_dir()]
+
+        if not subject_dirs:
+            logger.warning(f"No subject directories found in {annotation_base_dir}")
             logger.info("Creating sample dataset structure...")
             return self._create_sample_dataset(output_csv)
-        
-        for data_dir in data_dirs:
-            # Look for kinematics and MIDI files
-            kinematics_files = list(data_dir.glob("*annotation*.json")) + list(data_dir.glob("*annotation*.csv"))
-            midi_files = list(data_dir.glob("*.mid")) + list(data_dir.glob("*midi*.json"))
-            
-            if kinematics_files and midi_files:
-                for kit_file, midi_file in zip(kinematics_files, midi_files):
-                    logger.info(f"Processing: {kit_file.name} + {midi_file.name}")
-                    df = self.align_and_extract_features(str(kit_file), str(midi_file))
-                    if not df.empty:
-                        all_data.append(df)
+
+        try:
+            with tqdm(total=sum(len(list(d.glob('**/*_seq_*.json'))) for d in subject_dirs), desc="Processing dataset") as pbar:
+                for subject_dir in subject_dirs:
+                    kinematics_files = list(subject_dir.glob('**/*_seq_*.json'))
+                    for kit_file in kinematics_files:
+                        seq_name = kit_file.stem.replace('_annotation', '')
+                        midi_file = midi_base_dir / subject_dir.name / f"{seq_name.split('_seq_')[0]}.mid"
+
+                        if midi_file.exists():
+                            logger.info(f"Processing: {kit_file.name} + {midi_file.name}")
+                            df = self.align_and_extract_features(str(kit_file), str(midi_file))
+                            if not df.empty:
+                                all_data.append(df)
+                        pbar.update(1)
+        except KeyboardInterrupt:
+            logger.info("Keyboard interrupt detected. Saving partial results...")
         
         if all_data:
             combined_df = pd.concat(all_data, ignore_index=True)
@@ -372,8 +392,8 @@ def main():
     """Example usage of the data processor."""
     
     # Define paths
-    dataset_dir = Path(__file__).parent.parent.parent / "Data" / "PianoMotion10M"
-    output_csv = Path(__file__).parent.parent.parent / "Data" / "PianoMotion10M" / "features.csv"
+    dataset_dir = Path(__file__).parent / "PianoMotion10M" / "data"
+    output_csv = Path(__file__).parent / "PianoMotion10M" / "features.csv"
     
     # Process dataset
     processor = PianoMotionDataProcessor(str(dataset_dir), fps=30.0)
