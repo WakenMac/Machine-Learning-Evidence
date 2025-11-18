@@ -15,7 +15,7 @@ from ML_Pipeline_Prep import PianoMotionMLPipeline
 def quick_test():
     """Run a quick test of the pipeline."""
     
-    features_csv = Path(__file__).parent / "PianoMotion10M" / "features.csv"
+    features_csv = Path(__file__).parent.parent.parent / "Data" / "PianoMotion10M" / "features.csv"
     output_dir = Path(__file__).parent / "PianoMotion10M" / "results"
     
     print("🚀 Starting Quick Pipeline Test...\n")
@@ -46,6 +46,17 @@ def quick_test():
     print(f"   Test samples: {len(X_test_scaled)}")
     print(f"   Features: {X_train_scaled.shape[1]}")
     print(f"   Labels: {len(np.unique(pipeline.y_train))} classes")
+
+    # Check for new feature columns
+    expected_cols = [
+        'wrist_velocity_x', 'relative_velocity_y', 'avg_acceleration_z'
+    ]
+    df = pd.read_csv(features_csv)
+    missing_cols = [col for col in expected_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing expected feature columns: {missing_cols}")
+
+    print("\n✅ Verified presence of new feature columns.")
     
     return True
 

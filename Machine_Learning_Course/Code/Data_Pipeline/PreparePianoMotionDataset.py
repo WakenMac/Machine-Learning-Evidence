@@ -37,6 +37,8 @@ class PianoMotionDataProcessor:
         self.fps = fps
         self.frame_duration = 1.0 / fps  # Duration of each frame in seconds
         self.features_list = []
+        self.tip_velocities = []
+        self.tip_accelerations = []
         
     def load_annotations(self, annotation_file: str) -> np.ndarray:
         """
@@ -214,32 +216,62 @@ class PianoMotionDataProcessor:
                 # Distance from wrist for context
                 distance_from_wrist = np.linalg.norm(fingertip - wrist)
                 features['distance_from_wrist'] = float(distance_from_wrist)
-                
-                # 1. Finger Velocity (if previous frame exists)
+                features['fingertip_to_palm_center_distance'] = float(distance_from_wrist)
+
+                # Vector-based velocity and acceleration
+                velocity_vec = np.zeros(3)
+                acceleration_vec = np.zeros(3)
+                wrist_velocity = np.zeros(3)
+
                 if frame_idx > 0:
                     prev_frame = kinematics[frame_idx - 1]
                     prev_fingertip = prev_frame[fingertip_idx]
-                    velocity = np.linalg.norm(fingertip - prev_fingertip) / self.frame_duration
-                    features['finger_velocity'] = float(velocity)
-                else:
-                    features['finger_velocity'] = 0.0
-                
-                # 2. Finger Acceleration (if two previous frames exist)
+                    prev_wrist = prev_frame[wrist_idx]
+                    velocity_vec = (fingertip - prev_fingertip) / self.frame_duration
+                    wrist_velocity = (wrist - prev_wrist) / self.frame_duration
+
                 if frame_idx > 1:
                     prev_frame = kinematics[frame_idx - 1]
                     prev_prev_frame = kinematics[frame_idx - 2]
-                    
                     prev_fingertip = prev_frame[fingertip_idx]
                     prev_prev_fingertip = prev_prev_frame[fingertip_idx]
                     
-                    velocity_current = np.linalg.norm(fingertip - prev_fingertip) / self.frame_duration
-                    velocity_prev = np.linalg.norm(prev_fingertip - prev_prev_fingertip) / self.frame_duration
-                    
-                    acceleration = (velocity_current - velocity_prev) / self.frame_duration
-                    features['finger_acceleration'] = float(acceleration)
-                else:
-                    features['finger_acceleration'] = 0.0
+                    prev_velocity_vec = (prev_fingertip - prev_prev_fingertip) / self.frame_duration
+                    acceleration_vec = (velocity_vec - prev_velocity_vec) / self.frame_duration
+
+                features['finger_velocity_x'] = float(velocity_vec[0])
+                features['finger_velocity_y'] = float(velocity_vec[1])
+                features['finger_velocity_z'] = float(velocity_vec[2])
+                features['finger_acceleration_x'] = float(acceleration_vec[0])
+                features['finger_acceleration_y'] = float(acceleration_vec[1])
+                features['finger_acceleration_z'] = float(acceleration_vec[2])
+
+                features['wrist_velocity_x'] = float(wrist_velocity[0])
+                features['wrist_velocity_y'] = float(wrist_velocity[1])
+                features['wrist_velocity_z'] = float(wrist_velocity[2])
+
+                relative_fingertip_velocity = velocity_vec - wrist_velocity
+                features['relative_velocity_x'] = float(relative_fingertip_velocity[0])
+                features['relative_velocity_y'] = float(relative_fingertip_velocity[1])
+                features['relative_velocity_z'] = float(relative_fingertip_velocity[2])
+
+                # Moving averages
+                self.tip_velocities.append(velocity_vec)
+                self.tip_accelerations.append(acceleration_vec)
+                if len(self.tip_velocities) > 3:
+                    self.tip_velocities.pop(0)
+                    self.tip_accelerations.pop(0)
+
+                avg_velocity = np.mean(self.tip_velocities, axis=0)
+                avg_acceleration = np.mean(self.tip_accelerations, axis=0)
                 
+                features['avg_velocity_x'] = float(avg_velocity[0])
+                features['avg_velocity_y'] = float(avg_velocity[1])
+                features['avg_velocity_z'] = float(avg_velocity[2])
+                features['avg_acceleration_x'] = float(avg_acceleration[0])
+                features['avg_acceleration_y'] = float(avg_acceleration[1])
+                features['avg_acceleration_z'] = float(avg_acceleration[2])
+
         except (IndexError, ValueError) as e:
             logger.warning(f"Error extracting features for frame {frame_idx}: {e}")
         
@@ -266,6 +298,10 @@ class PianoMotionDataProcessor:
             logger.error("Failed to load kinematics data")
             return pd.DataFrame()
         
+        # Reset history for each new file
+        self.tip_velocities = []
+        self.tip_accelerations = []
+
         # Extract features for each frame
         all_features = []
         
@@ -364,8 +400,12 @@ class PianoMotionDataProcessor:
         
         n_samples = 500
         data = {
-            'finger_velocity': np.random.uniform(0, 2, n_samples),
-            'finger_acceleration': np.random.uniform(-1, 1, n_samples),
+            'finger_velocity_x': np.random.uniform(-0.5, 0.5, n_samples),
+            'finger_velocity_y': np.random.uniform(-0.5, 0.5, n_samples),
+            'finger_velocity_z': np.random.uniform(-0.5, 0.5, n_samples),
+            'finger_acceleration_x': np.random.uniform(-0.1, 0.1, n_samples),
+            'finger_acceleration_y': np.random.uniform(-0.1, 0.1, n_samples),
+            'finger_acceleration_z': np.random.uniform(-0.1, 0.1, n_samples),
             'finger_position_x': np.random.uniform(-0.1, 0.1, n_samples),
             'finger_position_y': np.random.uniform(-0.1, 0.1, n_samples),
             'finger_position_z': np.random.uniform(0.01, 0.3, n_samples),
@@ -373,14 +413,28 @@ class PianoMotionDataProcessor:
             'posture_feature': np.random.uniform(0.01, 0.1, n_samples),
             'euclidean_distance': np.random.uniform(0.01, 0.1, n_samples),
             'distance_from_wrist': np.random.uniform(0.1, 0.5, n_samples),
+            'fingertip_to_palm_center_distance': np.random.uniform(0.1, 0.5, n_samples),
+            'wrist_velocity_x': np.random.uniform(-0.2, 0.2, n_samples),
+            'wrist_velocity_y': np.random.uniform(-0.2, 0.2, n_samples),
+            'wrist_velocity_z': np.random.uniform(-0.2, 0.2, n_samples),
+            'relative_velocity_x': np.random.uniform(-0.3, 0.3, n_samples),
+            'relative_velocity_y': np.random.uniform(-0.3, 0.3, n_samples),
+            'relative_velocity_z': np.random.uniform(-0.3, 0.3, n_samples),
+            'avg_velocity_x': np.random.uniform(-0.5, 0.5, n_samples),
+            'avg_velocity_y': np.random.uniform(-0.5, 0.5, n_samples),
+            'avg_velocity_z': np.random.uniform(-0.5, 0.5, n_samples),
+            'avg_acceleration_x': np.random.uniform(-0.1, 0.1, n_samples),
+            'avg_acceleration_y': np.random.uniform(-0.1, 0.1, n_samples),
+            'avg_acceleration_z': np.random.uniform(-0.1, 0.1, n_samples),
         }
         
         # Create biased labels based on depth and velocity
         # Press: higher velocity, lower depth
         labels = []
         for i in range(n_samples):
-            score = (1 - data['depth_feature'][i] / 0.3) * 0.5 + (data['finger_velocity'][i] / 2) * 0.5
-            labels.append(1 if score > 0.5 else 0)
+            # Use the z-velocity for the score, as it's a good indicator of a key press.
+            score = (1 - data['depth_feature'][i] / 0.3) * 0.5 + (data['finger_velocity_z'][i] + 0.5) * 0.5
+            labels.append(1 if score > 0.6 else 0)
         
         data['ground_truth_label'] = labels
         data['frame_index'] = range(n_samples)
