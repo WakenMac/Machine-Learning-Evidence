@@ -81,9 +81,19 @@ class PianoMotionMLPipeline:
         if label_col not in df.columns:
             raise ValueError(f"Label column '{label_col}' not found in CSV")
         
-        # Drop non-feature columns
-        drop_cols = ['frame_index', label_col]
-        X = df.drop(columns=[col for col in drop_cols if col in df.columns])
+        # Explicitly define feature columns
+        feature_cols = [
+            'finger_velocity_x', 'finger_velocity_y', 'finger_velocity_z',
+            'finger_acceleration_x', 'finger_acceleration_y', 'finger_acceleration_z',
+            'finger_position_x', 'finger_position_y', 'finger_position_z',
+            'depth_feature', 'posture_feature', 'euclidean_distance',
+            'distance_from_wrist', 'fingertip_to_palm_center_distance',
+            'wrist_velocity_x', 'wrist_velocity_y', 'wrist_velocity_z',
+            'relative_velocity_x', 'relative_velocity_y', 'relative_velocity_z',
+            'avg_velocity_x', 'avg_velocity_y', 'avg_velocity_z',
+            'avg_acceleration_x', 'avg_acceleration_y', 'avg_acceleration_z'
+        ]
+        X = df[feature_cols]
         y = df[label_col]
         
         logger.info(f"Features: {list(X.columns)}")
