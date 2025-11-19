@@ -1,9 +1,48 @@
+# Author: Waken Cean C. Maclang
+# Date Last Edited: November 11, 2025
+# Course: Machine Learning
+# Task: Learning Evidence
 
+# QueuedList.py 
+#     Contains the QueuedList & Node class.
+#     It is the main data structure for calculating velocity (change in 
+#        distance and displacement) of the hand given a specific fps  
+
+# Works with Python 3.10.0
 
 
 class QueuedList:
     """
-    A one-way linked list with a soecific queue and a specific size.
+    A one-way linked list with a specific queue and a specific size.
+    NOTE: Designed for numericals due to having sum and mean functions.
+
+    It allows for dynamic adding of a new value to the end of the list, 
+       while not exceeding its maximum size by shifting the list to the 
+       last remaining or recently added elements.
+
+    Imagine it as a queue with a line limit, where after the line is full 
+       and a new customer apprears, the most recent in line leaves, every
+       customer in line shifts once to the front, and the new customer 
+       fills the gap at the end of the line.
+
+    The structure also allows for sum and mean aggregation of values.
+    
+    Exmaple:
+
+    ql = QueuedList(3)   # max_size of our QueuedList is 3
+    ql.append(1)
+    ql.append(2)
+    ql.append(3)
+    print(ql)            # (Front) 1 -> 2 -> 3 (End)
+
+    ql.append(4)       
+    print(ql)            # (Front) 2 -> 3 -> 4 (End)
+
+    print(ql.get_sum())  # 9
+
+    ql.append(5)
+    print(ql.get_sum())  # 13
+    print(ql.get_mean()) # 4.333...3
     """
 
     def __init__(self, max_size:int = 1):

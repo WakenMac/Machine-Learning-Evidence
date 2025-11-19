@@ -9,6 +9,15 @@
 # Works with Python 3.10.0
 
 # I need to learn how to use Python Modules :'>
-import VideoPlayer as vp
+from Machine_Learning_Course.Code.Dataset_Generation.VideoPlayer import VideoPlayer as vp
 
-player = vp('Machine_Learning_Course\\Trial Recordings\\[1] ArUco Boarder.mp4')
+dataset_path = 'Machine_Learning_Course\\Code\\Dataset_Generation\\my_temp_data.csv'
+
+# player = vp('Machine_Learning_Course\\Trial Recordings\\[1] ArUco Boarder.mp4')
+
+print(vp.get_vid_list())
+# player = vp.get_video_player(2, dataset_path, 240)
+# player = vp.get_video_player(1, dataset_path, 110)
+player = vp.get_video_player(0, dataset_path, 100)
+player.runVideo()
+print(player.temp_key_hist)

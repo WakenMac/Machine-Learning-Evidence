@@ -46,7 +46,7 @@ ydl = YoutubeDL(ydl_opts)
 
 file = open('Machine_Learning_Course\\Code\\Video_Downloader\\Waks_YT_Links.txt', 'r')
 
-urls = [line.strip() for line in file]
+urls = [[line.strip() for line in file][1]]
 
 for url in urls:
     # Or extract information without downloading
