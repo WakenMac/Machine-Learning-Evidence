@@ -25,12 +25,3 @@ replay_pid*
 
 Piano_Recordings*
 Machine_Learning_Course/Code/ArUco_Markers/Detecting_an_aruco_marker/DetectArucoLive_Waks.py
-
-# Python cache
-__pycache__/
-*.pyc
-
-# Generated data and results
-features.csv
-model_comparison.csv
-*.png
