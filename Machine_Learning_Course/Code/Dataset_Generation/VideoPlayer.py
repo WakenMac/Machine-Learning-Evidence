@@ -59,6 +59,7 @@ class VideoPlayer:
 
         # Time variables
         self.frame_count = starting_frame if starting_frame >= 0 else 0
+        self.elapsed_frames = 0
         self.secs = self.mins = 0
 
         # Dataset dictionary
@@ -70,8 +71,10 @@ class VideoPlayer:
             'tip2pip': [],
             'tip2mcp': [],
             'tip2wrist': [],
+            'disp':[],
             'velocity_size':[],     # The change in average joint distance (tip2dip ... tip2mcp)
             'velocity_disp':[],     # The distance from the previous point to the new point
+            'accuracy_disp':[],
             'distance_cm': [],     # Distance of the camera to the piano (meters)
             'is_hovering':[]
         }
@@ -122,6 +125,7 @@ class VideoPlayer:
         self.vid_path = vid_path
         self.file_name = vid_path.split('\\')[-1]
         self.cap = cv2.VideoCapture(self.vid_path)
+        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # Adds delay to the time cv2 renders frames.
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
@@ -132,7 +136,9 @@ class VideoPlayer:
             Now playing video. Details:
             Playing video feed from: {self.vid_path} 
             Frames per sec: {self.fps}
+            Total frames: {self.total_frames}
             Delay: {self.delay}
+            Distance: {self.calculate_distance_formula(52)}
         '''
         print(string)
 
@@ -141,21 +147,22 @@ class VideoPlayer:
             index_y = hand_landmarks.landmark[hand_joint_index].y
             return [int(index_x * 960), int(index_y * 540)]
 
-    def detect_hands(self, img:None, is_hovering:bool = True):
+    def detect_hands(self, img:None):
         if img is None:
             return None
         
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         results = self.hand_detector.process(img_rgb)
         if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                pixel_x, pixel_y = self.get_hand_pixel_coordinates(hand_landmarks, self.mp_hands.HandLandmark.INDEX_FINGER_TIP)
-                self.append_dataset(hand_landmarks, is_hovering)
-                cv2.circle(img_rgb, (pixel_x, pixel_y), 2, (0, 255, 0), thickness = 3)
-
-                # Draws the hand points to the image
-                # self.mp_drawing.draw_landmarks(img_rgb, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
-        return cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+            # MediaPipe is set to only detect one hand.
+            hand_landmarks = results.multi_hand_landmarks[0]
+            pixel_x, pixel_y = self.get_hand_pixel_coordinates(hand_landmarks, self.mp_hands.HandLandmark.INDEX_FINGER_TIP)
+            cv2.circle(img_rgb, (pixel_x, pixel_y), 2, (0, 255, 0), thickness = 3)
+            return [hand_landmarks, cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)]
+        
+        return [None, cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)]
+            # Draws the hand points to the image
+            # self.mp_drawing.draw_landmarks(img_rgb, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
 
     def append_dataset(self, hand_landmarks, is_hovering:bool = True):
         """
@@ -176,34 +183,51 @@ class VideoPlayer:
             return np.sqrt((x + y))
 
         # TODO: Implement the 2 types of velovity given the FPS
+        if hand_landmarks is None:
+            return
+
         dict_keys = ['tip2dip', 'tip2pip', 'tip2mcp', 'tip2wrist']
+        index_index = self.mp_hands.HandLandmark.INDEX_FINGER_TIP # Index of the index finger's tip HAHAHHA
         indices = [
-            [self.mp_hands.HandLandmark.INDEX_FINGER_TIP, self.mp_hands.HandLandmark.INDEX_FINGER_DIP],
-            [self.mp_hands.HandLandmark.INDEX_FINGER_TIP, self.mp_hands.HandLandmark.INDEX_FINGER_PIP],
-            [self.mp_hands.HandLandmark.INDEX_FINGER_TIP, self.mp_hands.HandLandmark.INDEX_FINGER_MCP],
-            [self.mp_hands.HandLandmark.INDEX_FINGER_TIP, self.mp_hands.HandLandmark.WRIST],
+            self.mp_hands.HandLandmark.INDEX_FINGER_DIP, 
+            self.mp_hands.HandLandmark.INDEX_FINGER_PIP, 
+            self.mp_hands.HandLandmark.INDEX_FINGER_MCP,  
+            self.mp_hands.HandLandmark.WRIST
         ]
+
         size = 0
-        for i in range(4):
-            dist = get_point_distance(self.get_hand_pixel_coordinates(hand_landmarks, indices[i][0]),
-                                      self.get_hand_pixel_coordinates(hand_landmarks, indices[i][1]))
+        self.new_coor = self.get_hand_pixel_coordinates(hand_landmarks, index_index)
+        for i, index in enumerate(indices):
+            dist = get_point_distance(
+                self.new_coor,
+                self.get_hand_pixel_coordinates(hand_landmarks, index)
+            )
             size += dist
             self.temp_data[dict_keys[i]].append(dist)
         self.temp_data['frame'].append(self.frame_count)
         self.temp_data['is_hovering'].append(is_hovering)
         
+        accuracy = 0
+        disp = 0
         # Adds the calculations to the QueuedList
-        if self.frame_count == 1 or self.old_coor is None:
-            self.new_coor = self.get_hand_pixel_coordinates(hand_landmarks, indices[1][0])
+        if self.elapsed_frames < 1 or self.old_coor is None:
             self.ql_disp.append(0)
         else:
-            self.new_coor = self.get_hand_pixel_coordinates(hand_landmarks, indices[1][0])
             disp = get_point_distance(self.old_coor, self.new_coor)
+            previous_velocity = self.ql_disp.get_mean()
             self.ql_disp.append(disp)
-        # self.ql_size.append(self.temp_data['tip2wrist'][-1])
-        self.ql_size.append(size / 4)
+            new_velocity = self.ql_disp.get_mean()
+            accuracy = previous_velocity - new_velocity
 
-        self.temp_data['velocity_disp'].append(self.ql_disp.get_mean())
+        # self.ql_size.append(self.temp_data['tip2wrist'][-1])
+
+        # ql_size focuses on the average change in finger length within a second
+        # ql_disp is the average change in displacement of the fingertip within a second
+        self.ql_size.append(size / 4)
+        
+        self.temp_data['disp'].append(disp)
+        self.temp_data['accuracy_disp'].append(accuracy)
+        self.temp_data['velocity_disp'].append(self.ql_disp.get_mean()) # Change in valocity per second
         self.temp_data['velocity_size'].append(self.ql_size.get_mean())
         self.temp_data['distance_cm'].append(self.calculate_distance_formula(number_of_keys=52))
 
@@ -220,8 +244,6 @@ class VideoPlayer:
         self.print_video_info()
         pause = False
         is_hovering = True
-        is_raised = True
-        last_key = None
 
         # cv2.putText() related variables
         org = (10, 30)
@@ -235,6 +257,10 @@ class VideoPlayer:
             if pause:
                 cv2.waitKey(self.delay)
                 key = self.get_pressed_key()
+
+                if key:
+                    self.temp_key_hist.append(key)
+                
                 if key == 'space':
                     pause = not pause
                 elif key == 'r':
@@ -261,37 +287,31 @@ class VideoPlayer:
                                 thickness, lineType)
 
             # Method to detect the hands and add the coordinates to the dataframe
-            frame = self.detect_hands(frame, is_hovering)
-
+            (hand_landmarks, frame) = self.detect_hands(frame)
             cv2.imshow(self.file_name, frame)
 
             cv2.waitKey(self.delay)
-
             key = self.get_pressed_key()
 
             if key == 'esc':   # ESC key
                 break
-
             elif key == 'q':
-                if last_key != 'q' and is_hovering and is_raised:
-                    print('You pressed the \'q\' key.')
-                    is_hovering = False 
-                    is_raised = False\
-            
-            elif key == 255 and last_key == 'q':
-                is_hovering = True
-                is_raised = True
-
+                is_hovering = False
             elif key == 'space':
                 pause = not pause
-
             elif key == 'r':
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 self.frame_count = 1
 
+            # Create the numerical features from the landmarks and add them to the dataset
+            self.append_dataset(hand_landmarks, is_hovering)
+
+            is_hovering = True
             self.frame_count += 1
-            last_key = key
-            self.temp_key_hist.append(last_key)
+            self.elapsed_frames += 1
+
+            # A object used to track the keys presses made while collecting the dataset
+            self.temp_key_hist.append(key)
 
         self.cap.release()
         cv2.destroyAllWindows()
@@ -307,7 +327,7 @@ class VideoPlayer:
         else:
             pd.concat(
                 [self.dataset, df], axis=0, join='outer', ignore_index=True
-            ).to_csv(f'Machine_Learning_Course\Code\Dataset_Generation\{csv_name}', index=True)
+            ).to_csv(f'Machine_Learning_Course\Code\Dataset_Generation\{csv_name}', index=False)
 
     def get_pressed_key(self):
         """Return the key that is currently pressed, or None."""

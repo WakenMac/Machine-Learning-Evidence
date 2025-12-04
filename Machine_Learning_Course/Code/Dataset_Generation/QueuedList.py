@@ -52,7 +52,11 @@ class QueuedList:
         self.end_none = None
 
     def append(self, value:float):
+        if isinstance(value, list):
+            self._append_values(value)
+
         new_node = Node(value)
+        new_node.previous = None
 
         if self.current_size == 0:
             self.start_node = new_node
@@ -61,16 +65,43 @@ class QueuedList:
         
         elif self.current_size < self.max_size:
             self.end_node.next = new_node
+            new_node.previous = self.end_node
             self.end_node = self.end_node.next
             self.current_size += 1
 
         else:
             self.start_node = self.start_node.next
+            new_node.previous = self.end_node
             self.end_node.next = new_node
             self.end_node = self.end_node.next
 
         return True
     
+    def append_values(self, values):
+        for value in values:
+            self.append(value)
+    
+    def get(self, index) -> float:
+        if index > self.current_size or self.current_size == 0:
+            print(f'WARNING: Tried getting a value at an impossible index of {index}')
+            return -1
+
+        start = 0
+        end = self.current_size - 1
+
+        temp_start = self.start_node
+        temp_end = self.end_node
+        while start <= end:
+            if start == index:
+                return temp_start.value
+            elif end == index:
+                return temp_end.value
+            
+            temp_start = temp_start.next
+            temp_end = temp_end.previous
+            start += 1
+            end -= 1
+
     def get_sum(self) -> float:
         sum = 0
         temp_node = self.start_node
@@ -96,3 +127,7 @@ class Node:
     def __init__(self, value:float = 0):
         self.value = value if value is not None else 0
         self.next = None
+        self.previous = None
+    
+    def __str__(self) -> str:
+        return str(self.value)
