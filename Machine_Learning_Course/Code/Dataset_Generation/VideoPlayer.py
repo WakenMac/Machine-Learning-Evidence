@@ -13,6 +13,7 @@ import cv2
 import pandas as pd
 import numpy as np
 import mediapipe as mp
+import keyboard
 from Machine_Learning_Course.Code.Dataset_Generation.QueuedList import QueuedList as ql
 
 class VideoPlayer:
@@ -71,7 +72,7 @@ class VideoPlayer:
             'tip2wrist': [],
             'velocity_size':[],     # The change in average joint distance (tip2dip ... tip2mcp)
             'velocity_disp':[],     # The distance from the previous point to the new point
-            'distance_cm': 1,     # Distance of the camera to the piano (meters)
+            'distance_cm': [],     # Distance of the camera to the piano (meters)
             'is_hovering':[]
         }
 
@@ -204,15 +205,18 @@ class VideoPlayer:
 
         self.temp_data['velocity_disp'].append(self.ql_disp.get_mean())
         self.temp_data['velocity_size'].append(self.ql_size.get_mean())
+        self.temp_data['distance_cm'].append(self.calculate_distance_formula(number_of_keys=52))
 
         self.old_coor = self.new_coor
 
     def calculate_distance_formula(self, number_of_keys:int = 1):
-        numerator = 960 / (number_of_keys * 2.3)
-        print(f'Distance = focal_length / {numerator}')
-        return numerator
+        # numerator = 960 / (number_of_keys * 2.3)
+        # print(f'Distance = focal_length / {numerator}')
+        
+        # Focal length (px) * (object size / pixel width)
+        return 1425 * ((number_of_keys * 2.3) / 960)
 
-    def runVideo(self):
+    def runVideo(self, csv_name='my_temp_data.csv'):
         self.print_video_info()
         pause = False
         is_hovering = True
@@ -229,14 +233,15 @@ class VideoPlayer:
 
         while True:
             if pause:
-                key = cv2.waitKey(self.delay) & 0xFF
-                if key == ord(' '):
+                cv2.waitKey(self.delay)
+                key = self.get_pressed_key()
+                if key == 'space':
                     pause = not pause
-                elif key == ord('r'):
+                elif key == 'r':
                     self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     self.frame_count = 1
                     pause = not pause
-                elif key == 27:
+                elif key == 'esc':
                     break
                 continue
 
@@ -260,25 +265,27 @@ class VideoPlayer:
 
             cv2.imshow(self.file_name, frame)
 
-            key = cv2.waitKey(self.delay) & 0xFF
+            cv2.waitKey(self.delay)
 
-            if key == 27:   # ESC key
+            key = self.get_pressed_key()
+
+            if key == 'esc':   # ESC key
                 break
 
-            elif key == ord('q'):
-                if last_key != ord('q') and is_hovering and is_raised:
+            elif key == 'q':
+                if last_key != 'q' and is_hovering and is_raised:
                     print('You pressed the \'q\' key.')
                     is_hovering = False 
                     is_raised = False\
             
-            elif key == 255 and last_key == ord('q'):
+            elif key == 255 and last_key == 'q':
                 is_hovering = True
                 is_raised = True
 
-            elif key == ord(' '):
+            elif key == 'space':
                 pause = not pause
 
-            elif key == ord('r'):
+            elif key == 'r':
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 self.frame_count = 1
 
@@ -290,14 +297,26 @@ class VideoPlayer:
         cv2.destroyAllWindows()
 
         temp_df = pd.DataFrame(self.temp_data)
-        print(temp_df.drop(['frame', 'video_index', 'video_name', 'fingertip', 'is_hovering', 'distance_cm'], axis=1).head(20))      
+        # print(temp_df.drop(['frame', 'video_index', 'video_name', 'fingertip', 'is_hovering', 'distance_cm'], axis=1).head(20))      
+        print(temp_df.drop(['frame', 'video_index', 'video_name', 'fingertip', 'is_hovering'], axis=1).head(20))      
         df = pd.DataFrame(temp_df)
         print('\n\nNumber of key presses: ', df['is_hovering'][df['is_hovering'] == False].count())
 
         if self.dataset.size == 0:
-            df.to_csv('Machine_Learning_Course\Code\Dataset_Generation\my_temp_data.csv', index=True)
+            df.to_csv(f'Machine_Learning_Course\Code\Dataset_Generation\{csv_name}', index=False)
         else:
-            pd.concat([self.dataset, df], axis=0, join='outer', ignore_index=True).to_csv('Machine_Learning_Course\Code\Dataset_Generation\my_temp_data.csv')
+            pd.concat(
+                [self.dataset, df], axis=0, join='outer', ignore_index=True
+            ).to_csv(f'Machine_Learning_Course\Code\Dataset_Generation\{csv_name}', index=True)
+
+    def get_pressed_key(self):
+        """Return the key that is currently pressed, or None."""
+        # keyboard.read_event() blocks, so we won’t use that.
+        # Instead we scan common printable keys.
+        for key in list("abcdefghijklmnopqrstuvwxyz0123456789") + ['space', 'esc']:
+            if keyboard.is_pressed(key):
+                return key
+        return None
 
     def get_video_player(video_index:int = 0, dataset_path:str = None, starting_frame:int = 0):
         if video_index < 0 or video_index > len(VideoPlayer.get_vid_list()) - 1:

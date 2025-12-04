@@ -6,8 +6,9 @@ cap = mp_hands = mp_drawing = hands = None
 def init():
     global cap, mp_hands, mp_drawing, hands
 
-    cap = cv2.VideoCapture(0) # Use this if the webcam is off
-    # cap = cv2.VideoCapture(1) # Use this if the webcam is on
+    # cap = cv2.VideoCapture(0) # Use this if the webcam is off
+    # cap = cv2.VideoCapture(0) # Use this for the Iriun Webcam
+    cap = cv2.VideoCapture(2) # Use this if the webcam is on
     mp_hands = mp.solutions.hands
     mp_drawing = mp.solutions.drawing_utils
     hands = mp_hands.Hands(
@@ -18,12 +19,12 @@ def init():
 
 def processImage(image):
     # Resizing the Image
-    [h, w] = image.shape[:2]
-    desired_width = 640
-    aspect_ratio = w/float(h)
-    desired_height = int(h / aspect_ratio)
-    resized_image = cv2.resize(image, (desired_width, desired_height))
-
+    # [h, w] = image.shape[:2]
+    # desired_width = 640
+    # aspect_ratio = w/float(h)
+    # desired_height = int(h / aspect_ratio)
+    # resized_image = cv2.resize(image, (desired_width, desired_height))
+    resized_image = cv2.resize(image, (960, 540))
 
     # Passing the image to mediapipe
     image_rgb = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
@@ -40,9 +41,15 @@ def processImage(image):
                 hand_landmark,
                 mp_hands.HAND_CONNECTIONS
             )
+            print(
+                hand_landmark.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].x,
+                hand_landmark.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].y,
+                hand_landmark.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].z,
+                sep=' | '
+            )
         return image_bgr
     else: 
-        return image
+        return resized_image
 
 def main():
     init()
