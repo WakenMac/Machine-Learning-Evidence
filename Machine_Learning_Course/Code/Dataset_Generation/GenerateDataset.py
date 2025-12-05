@@ -18,5 +18,6 @@ dataset_path = 'Machine_Learning_Course\\Code\\Dataset_Generation\\my_temp_data.
 print(vp.get_vid_list())
 # player = vp.get_video_player(2, dataset_path, 240)
 # player = vp.get_video_player(1, dataset_path, 110)
-player = vp.get_video_player(0, dataset_path, 100)
+player = vp.get_video_player(5, dataset_path, 100)
 player.runVideo()
+

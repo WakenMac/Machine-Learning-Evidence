@@ -38,7 +38,7 @@ class VideoPlayer:
 
     @classmethod
     def get_vid_list(cls):
-        return cls.__VID_LIST
+        return os.listdir(cls.__VID_PATH)
 
     def __init__(self, 
                  vid_path:str = 'Machine_Learning_Course\\Trial Recordings\\[1] ArUco Boarder.mp4',
@@ -74,7 +74,7 @@ class VideoPlayer:
             'disp':[],
             'velocity_size':[],     # The change in average joint distance (tip2dip ... tip2mcp)
             'velocity_disp':[],     # The distance from the previous point to the new point
-            'accuracy_disp':[],
+            'acceleration_disp':[],
             'distance_cm': [],     # Distance of the camera to the piano (meters)
             'is_hovering':[]
         }
@@ -226,7 +226,7 @@ class VideoPlayer:
         self.ql_size.append(size / 4)
         
         self.temp_data['disp'].append(disp)
-        self.temp_data['accuracy_disp'].append(accuracy)
+        self.temp_data['acceleration_disp'].append(accuracy)
         self.temp_data['velocity_disp'].append(self.ql_disp.get_mean()) # Change in valocity per second
         self.temp_data['velocity_size'].append(self.ql_size.get_mean())
         self.temp_data['distance_cm'].append(self.calculate_distance_formula(number_of_keys=52))
@@ -238,7 +238,8 @@ class VideoPlayer:
         # print(f'Distance = focal_length / {numerator}')
         
         # Focal length (px) * (object size / pixel width)
-        return 1425 * ((number_of_keys * 2.3) / 960)
+        # return 1425 * ((number_of_keys * 2.3) / 960)
+        return 930 * ((number_of_keys * 2.3) / 960)
 
     def runVideo(self, csv_name='my_temp_data.csv'):
         self.print_video_info()
@@ -323,11 +324,11 @@ class VideoPlayer:
         print('\n\nNumber of key presses: ', df['is_hovering'][df['is_hovering'] == False].count())
 
         if self.dataset.size == 0:
-            df.to_csv(f'Machine_Learning_Course\Code\Dataset_Generation\{csv_name}', index=False)
+            df.to_csv(f'Machine_Learning_Course\Code\Dataset_Generation\{self.file_name.replace(" ", "_")[:-3]}csv', index=False)
         else:
             pd.concat(
-                [self.dataset, df], axis=0, join='outer', ignore_index=True
-            ).to_csv(f'Machine_Learning_Course\Code\Dataset_Generation\{csv_name}', index=False)
+                [self.dataset, df], axis=0, ignore_index=True
+            ).to_csv(f'Machine_Learning_Course\Code\Dataset_Generation\{self.file_name.replace(" ", "_")[:-3]}csv', index=False)
 
     def get_pressed_key(self):
         """Return the key that is currently pressed, or None."""

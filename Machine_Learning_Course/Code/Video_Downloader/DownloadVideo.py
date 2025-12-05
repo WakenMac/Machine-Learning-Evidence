@@ -48,6 +48,8 @@ file = open('Machine_Learning_Course\\Code\\Video_Downloader\\Waks_YT_Links.txt'
 
 urls = [[line.strip() for line in file][1]]
 
+urls = ['https://www.youtube.com/watch?v=MBOa-2b4uQQ']
+
 for url in urls:
     # Or extract information without downloading
     info_dict = ydl.extract_info(url, download=True)
