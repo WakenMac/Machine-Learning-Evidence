@@ -9,7 +9,8 @@ temp_df = pd.concat(
     pd.read_csv('Machine_Learning_Course\\Code\\Dataset_Generation\\Debussy_-_Rêverie.csv'),
     pd.read_csv('Machine_Learning_Course\\Code\\Dataset_Generation\\Debussy_-_Clair_de_Lune.csv'),
     pd.read_csv('Machine_Learning_Course\\Code\\Dataset_Generation\\Chopin_-_Marche_Funèbre_(Funeral_March).csv'),
-    pd.read_csv('Machine_Learning_Course\\Code\\Dataset_Generation\\Ludovico_Einaudi_-_Divenire.csv')
+    pd.read_csv('Machine_Learning_Course\\Code\\Dataset_Generation\\Ludovico_Einaudi_-_Divenire.csv'),
+    pd.read_csv('Machine_Learning_Course\\Code\\Dataset_Generation\\Schubert_-_Serenade_(arr._Liszt).csv')
     ], axis=0, ignore_index=True
 )
 

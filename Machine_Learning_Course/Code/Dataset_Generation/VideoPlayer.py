@@ -157,12 +157,14 @@ class VideoPlayer:
             # MediaPipe is set to only detect one hand.
             hand_landmarks = results.multi_hand_landmarks[0]
             pixel_x, pixel_y = self.get_hand_pixel_coordinates(hand_landmarks, self.mp_hands.HandLandmark.INDEX_FINGER_TIP)
+            
+            # Draws the hand points to the image
+            # self.mp_drawing.draw_landmarks(img_rgb, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+            
             cv2.circle(img_rgb, (pixel_x, pixel_y), 2, (0, 255, 0), thickness = 3)
             return [hand_landmarks, cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)]
         
         return [None, cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)]
-            # Draws the hand points to the image
-            # self.mp_drawing.draw_landmarks(img_rgb, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
 
     def append_dataset(self, hand_landmarks, is_hovering:bool = True):
         """
@@ -261,7 +263,6 @@ class VideoPlayer:
 
                 if key:
                     self.temp_key_hist.append(key)
-                
                 if key == 'space':
                     pause = not pause
                 elif key == 'r':

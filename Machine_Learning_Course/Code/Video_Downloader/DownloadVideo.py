@@ -48,7 +48,7 @@ file = open('Machine_Learning_Course\\Code\\Video_Downloader\\Waks_YT_Links.txt'
 
 urls = [[line.strip() for line in file][1]]
 
-urls = ['https://www.youtube.com/watch?v=MBOa-2b4uQQ']
+urls = ['https://www.youtube.com/watch?v=lv5xPlm6etI']
 
 for url in urls:
     # Or extract information without downloading

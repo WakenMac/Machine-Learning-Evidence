@@ -7,8 +7,9 @@ import cv2
 import mediapipe as mp
 
 # Define file paths
-input_path = "C:\\Users\\Waks\\Downloads\\75bd947c-1273-44c7-adf4-9315646a2065.jpg"
-output_path = "C:\\Users\\Waks\\Downloads\\USEP BSCS\\Coding\\Machine-Learning-in-Java-main\\Machine-Learning-in-Java\\Machine_Learning_Course\\Learning_Evidence\\annotated_image2.jpg"
+# input_path = "C:\\Users\\Waks\\Downloads\\75bd947c-1273-44c7-adf4-9315646a2065.jpg"
+input_path = "C:\\Users\\Waks\\Pictures\\Screenshots\\Screenshot 2025-12-05 121824.png"
+output_path = "Machine_Learning_Course\\Images\\Annotated_Images\\annotated_image3.jpg"
 
 # Initialize MediaPipe Hands solution
 mp_hands = mp.solutions.hands
@@ -16,7 +17,7 @@ mp_drawing = mp.solutions.drawing_utils
 hands = mp_hands.Hands(
     static_image_mode=True,  # Use static_image_mode for single-image processing
     min_detection_confidence=0.5,
-    max_num_hands=2)
+    max_num_hands=1)
 
 # Read the image using OpenCV
 image = cv2.imread(input_path)
@@ -36,7 +37,7 @@ aspect_ratio = w / float(h)
 desired_height = int(desired_width / aspect_ratio)
 
 # Resize the image while maintaining the aspect ratio
-resized_image = cv2.resize(image, (desired_width, desired_height))
+resized_image = cv2.resize(image, (960, 540))
 
 # Convert the BGR image to RGB for MediaPipe processing
 image_rgb = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
@@ -53,14 +54,22 @@ image_rgb.flags.writeable = True
 # Convert the image back to BGR for drawing with OpenCV
 annotated_image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
+def get_hand_pixel_coordinates(hand_landmarks, hand_joint_index: int = 0):
+        index_x = hand_landmarks.landmark[hand_joint_index].x
+        index_y = hand_landmarks.landmark[hand_joint_index].y
+        return [int(index_x * 960), int(index_y * 540)]
+
 # Draw the hand annotations on the image
 if results.multi_hand_landmarks:
     for hand_landmarks in results.multi_hand_landmarks:
-        mp_drawing.draw_landmarks(
-            annotated_image,
-            hand_landmarks,
-            mp_hands.HAND_CONNECTIONS
-        )
+        # mp_drawing.draw_landmarks(
+        #     annotated_image,
+        #     hand_landmarks,
+        #     mp_hands.HAND_CONNECTIONS
+        # )
+        pixel_x, pixel_y = get_hand_pixel_coordinates(hand_landmarks, mp_hands.HandLandmark.INDEX_FINGER_TIP)
+        cv2.circle(annotated_image, (pixel_x, pixel_y), 2, (0, 255, 0), thickness = 3)
+        print('annotated the img.')
 
 # Save the annotated image to the specified output path
 print(annotated_image.shape[:2])
