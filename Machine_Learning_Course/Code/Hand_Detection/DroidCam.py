@@ -1,21 +1,34 @@
 import cv2
 import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+from mediapipe.tasks.python.vision import RunningMode, HandLandmarker, HandLandmarkerOptions 
+import time
 
+model_path = 'Machine-Learning-Evidence\Machine_Learning_Course\Code\hand_landmarker.task'
 cap = mp_hands = mp_drawing = hands = None
+detector = None
+
+minimum_quality = [1280, 720]
+high_quality = [1920, 1080]
 
 def init():
-    global cap, mp_hands, mp_drawing, hands
+    global cap, mp_hands, mp_drawing, hands, detector
 
     # cap = cv2.VideoCapture(0) # Use this if the webcam is off
-    # cap = cv2.VideoCapture(0) # Use this for the Iriun Webcam
-    cap = cv2.VideoCapture(2) # Use this if the webcam is on
-    mp_hands = mp.solutions.hands
-    mp_drawing = mp.solutions.drawing_utils
-    hands = mp_hands.Hands(
-        static_image_mode = False,
-        min_detection_confidence = 0.5,
-        max_num_hands = 2
+    cap = cv2.VideoCapture(1) # Use this if Iriun webcam is on
+    # cap = cv2.VideoCapture(2) # Use this if the webcam is on
+
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, minimum_quality[0])
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, minimum_quality[1])
+
+    base_options = python.BaseOptions(model_asset_path=model_path)
+    options = HandLandmarkerOptions(
+        base_options=base_options,
+        running_mode = RunningMode.VIDEO,
+        num_hands=2,
     )
+    detector = HandLandmarker.create_from_options(options)
 
 def processImage(image):
     # Resizing the Image
@@ -28,28 +41,24 @@ def processImage(image):
 
     # Passing the image to mediapipe
     image_rgb = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
-    image_rgb.flags.writeable = False
-    results = hands.process(image_rgb)
-    image_rgb.flags.writeable = True
-    image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+
+    frame_timestamp_ms = int(time.time() * 1000)
+    result = detector.detect_for_video(mp_image, frame_timestamp_ms)
     
     # Draws the points to the image_bgr
-    if results.multi_hand_landmarks:
-        for hand_landmark in results.multi_hand_landmarks:
-            mp_drawing.draw_landmarks(
-                image_bgr,
-                hand_landmark,
-                mp_hands.HAND_CONNECTIONS
-            )
-            print(
-                hand_landmark.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].x,
-                hand_landmark.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].y,
-                hand_landmark.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].z,
-                sep=' | '
-            )
-        return image_bgr
-    else: 
-        return resized_image
+    if result.hand_landmarks:
+        for hand_landmark in result.hand_landmarks:
+            for landmark in hand_landmark:
+                h, w, c = image.shape
+                x = int(landmark.x * w)
+                y = int(landmark.y * h)
+                
+                # Draw a green circle on each joint
+                cv2.circle(image, (x, y), 5, (0, 255, 0), -1)
+
+    print(image.shape)
+    return image
 
 def main():
     init()

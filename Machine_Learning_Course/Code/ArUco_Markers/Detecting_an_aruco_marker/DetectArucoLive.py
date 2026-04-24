@@ -210,7 +210,7 @@ def main(camera_index:int):
                             if pressed and key_hovered != 'NA':
                                 print(f'Key {key_hovered} pressed!')
 
-            cv2.imshow('HomePiano: My AR Piano', detected_image)
+            cv2.imshow('HomePiano', detected_image)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
