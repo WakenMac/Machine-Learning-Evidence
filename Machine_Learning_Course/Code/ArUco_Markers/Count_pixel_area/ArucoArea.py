@@ -11,8 +11,10 @@
 import cv2
 import numpy as np
 
-img = cv2.imread("Machine_Learning_Course\\Images\\ArUco_Markers\\Detect\\aruco_marker_detect_100cm.jpg")
+image_path = 'Machine-Learning-Evidence\Machine_Learning_Course\Images\ArUco_Markers\Detect\\aruco_marker_detect_samsung_100cm.jpg'
+img = cv2.imread(image_path)
 print(img.shape[:2])
+# img = cv2.resize(img, (1280, 720))
 img = cv2.resize(img, (640, 480))
 
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)

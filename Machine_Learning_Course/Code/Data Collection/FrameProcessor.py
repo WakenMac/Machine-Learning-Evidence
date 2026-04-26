@@ -5,7 +5,7 @@
 
 # DetectArucoLive.py 
 #     It consists of the entire Algorithmic Framework to Detect the AR Piano and Hands, whilst playing the piano key.
-#     Designed to be used for live use.
+#     Designed to be used for data collection
 
 # Works with Python 3.14.2
 
@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import mediapipe as mp 
 from mediapipe.tasks.python import BaseOptions
-from mediapipe.tasks import python
 from mediapipe.tasks.python.vision import RunningMode, HandLandmarker, HandLandmarkerOptions 
 import time
 
@@ -29,28 +28,36 @@ KNOWN_DISTANCE = 10    # In Centimeters
 H_matrix = None
 minimum_quality = [1280, 720]
 high_quality = [1920, 1080]
+fps = total_frames = None
 
-def init_detectors(camera_index:int):
+def init_detectors(video_path:str):
     """
     Initializes the aruco detector.
+    @param camera_index
+
     @returns   An ArUco Detector object suited to detect DICT_4X4_40 markers.
     """
+    global fps, total_frames
+
     aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
     parameters = aruco.DetectorParameters()
     aruco_detector = aruco.ArucoDetector(aruco_dict, parameters)
     
     model_path = 'Machine-Learning-Evidence\Machine_Learning_Course\Code\hand_landmarker.task'
-    base_options = python.BaseOptions(model_asset_path=model_path)
+    base_options = BaseOptions(model_asset_path=model_path)
     options = HandLandmarkerOptions(
         base_options=base_options, 
         num_hands = 2,
         running_mode = RunningMode.VIDEO
     )
-    hand_detector = HandLandmarker.create_from_options(options)
-    
-    cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
+
+    cap = cv2.VideoCapture(video_path, cv2.CAP_DSHOW)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, minimum_quality[0])
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, minimum_quality[1])
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+
+    hand_detector = HandLandmarker.create_from_options(options)
     return [cap, aruco_detector, hand_detector]
 
 def generate_boarder_points(corners):
@@ -247,18 +254,7 @@ def get_piano_distance(corners) -> float:
     if new_area == -1:
         return -1
     return KNOWN_DISTANCE * (KNOWN_AREA / new_area) ** 0.5
-
-def trackFingers(hand_landmarks:list, piano_boarder):
-    boarder_values = get_min_max(piano_boarder)
-    if boarder_values is None:
-        return
-    key_width = get_key_width(get_border_dimensions(boarder_values)[1])
-
-    # key_hovered = get_key_hovered(fingertip_coords, key_width, boarder_values)
-    #     # if pressed and key_hovered != 'NA':
-    #     if key_hovered != 'NA':
-    #         print(f'Key {key_hovered} pressed!')
-
+    
 def handleImageOverlay(image, text):
     org = (10, 30)
     fontFace = cv2.FONT_HERSHEY_SIMPLEX
@@ -271,6 +267,10 @@ def handleImageOverlay(image, text):
                                 thickness, lineType)
 
 def appendRecordedLandmarks(data_dict:dict, H_matrix:list, frame_count:int, landmark_index:int, x_coord:int, y_coord:int):
+    """
+    Appends the recorded landmark coordinates to the dictionary.
+    This is a pre-requisite step before we finalize and append our data to the csv. 
+    """
     data_dict.get('frame_index').append(frame_count)
     data_dict.get('hand_landmark').append(landmark_index)
 
@@ -280,48 +280,56 @@ def appendRecordedLandmarks(data_dict:dict, H_matrix:list, frame_count:int, land
     )[0][0]
     data_dict.get('x_coords').append(canonical_points[0])
     data_dict.get('y_coords').append(canonical_points[1])
-    
-def saveRecordedLandmarks(data_dict:dict) -> None:
+
+def saveRecordedLandmarks(
+    data_dict:dict, 
+    file_path:str) -> None:
+
     """
-    Records the saved coordinates into a Pandas DataFrame in long format. The csv is stored in:
-    Machine-Learning-Evidence\Machine_Learning_Course\Code\ArUco_Markers\Detecting_an_aruco_marker\\test_coordinates.csv
+    Records the saved coordinates into a Pandas DataFrame in long format
 
     @param data_dict           Contains the dictionary of data that will be saved as a CSV with
                                the ff values:
+                                - user               ID for the person being recorded
+                                - video_name         Name of the video recording
                                 - frame_index        Number of the frame processed
                                 - hand_landmark      Index of the joint (See MediaPipe Docu as a guide)
                                 - x_coords           X-coordinate of the given joint/landmark
                                 - y_coords           Y-coordinate of the given joint/landmark
+
+    @param file_path           The file path to access the csv file.
     """
-    data_path = 'Machine-Learning-Evidence\Machine_Learning_Course\Code\ArUco_Markers\Detecting_an_aruco_marker\\test_coordinates.csv'
     data = None
     try:
-        data = pd.read_csv(data_path)
+        data = pd.read_csv(file_path)
     except (FileNotFoundError):
         print('No File named recordings.csv exists.')
 
     new_data = pd.DataFrame(data_dict)
 
     if data is not None:
-        pd.concat([data, new_data], axis=0, ignore_index=True).to_csv(data_path, index=False)
+        pd.concat([data, new_data], axis=0, ignore_index=True).to_csv(file_path, index=False)
     else:
-        new_data.to_csv(data_path, index=False)
+        new_data.to_csv(file_path, index=False)
 
-def main(camera_index:int):
+def main(user:int, video_path:str, file_path:str):
     """
     Main method to run the AR Piano Model.
     """
-    lowest_fps = 10000
+
     frame_count = 1
+    transformed_image = None
+    video_name = video_path.split('\\')[-1]
+
+    cap, aruco_detector, hand_detector = init_detectors(video_path)
     data_dict = {
+        'user': user,
+        'video_name': video_name,
         'frame_index': [],
         'hand_landmark':[],
         'x_coords':[],
         'y_coords':[]
     }
-    prev_frame_time = distance = 0
-    transformed_image = None
-    cap, aruco_detector, hand_detector = init_detectors(camera_index)
 
     if not cap.isOpened():
         print('Unable to access camera feed.')
@@ -343,45 +351,54 @@ def main(camera_index:int):
 
             if markers_detected:
                 distance = get_piano_distance(corners)
+                detected_image = handleImageOverlay(detected_image, f'Piano Distance: {distance:.2f} cm. \nFrame: {frame}')
+
+                # Perform homographical transformation here
                 transformed_image = apply_homography(detected_image, piano_boarder)
+
                 image_rgb = cv2.cvtColor(detected_image, cv2.COLOR_BGR2RGB)
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
                 frame_timestamp_ms = int(time.time() * 1000)
                 result = hand_detector.detect_for_video(mp_image, frame_timestamp_ms)
+
+                # Draws the points to the image_bgr
                 if result.hand_landmarks:
                     for hand_landmark in result.hand_landmarks:
                         for i, landmark in enumerate(hand_landmark):
+                            # Normalized measurement to pixel coordinate
                             h, w, c = detected_image.shape
                             x = int(landmark.x * w)
                             y = int(landmark.y * h)
-                            appendRecordedLandmarks(data_dict, H_matrix, frame_count, i, x, y,)
-                            # cv2.circle(detected_image, (x, y), 5, (0, 255, 0), -1)
 
-                    # Method for the piano playing logic
-                    trackFingers(result.hand_landmarks[0], piano_boarder)
+                            appendRecordedLandmarks(data_dict, H_matrix, frame_count, i, x, y,)
+                            cv2.circle(detected_image, (x, y), 5, (0, 255, 0), -1)
+
+                    # Gets the coordinates from the first hand
+                    fingertip_coords = result.hand_landmarks[0]
+
+                    # For the piano playing logic
+                    # boarder_values = get_min_max(piano_boarder)
+                    # if boarder_values:
+                    #     key_width = get_key_width(get_border_dimensions(boarder_values)[1])
+                    #     key_hovered = get_key_hovered(fingertip_coords, key_width, boarder_values)
+
+                    #     # if pressed and key_hovered != 'NA':
+                    #     if key_hovered != 'NA':
+                    #         print(f'Key {key_hovered} pressed!')
             
-            # Handle FPS
-            current_time = time.time()
-            time_elapsed = current_time - prev_frame_time
-            if time_elapsed > 0:
-                fps = 1 / time_elapsed
-            else:
-                fps = 0
-            prev_frame_time = current_time
-            lowest_fps = fps if fps < lowest_fps and fps > 0 else lowest_fps 
-            text = f'Piano Distance: {distance:.2f} cm. FPS: {fps:.1f}'
-            detected_image = handleImageOverlay(detected_image, text)
-            
-            frame_count += 1
             transformed_image = detected_image
+
+            # cv2.imshow('HomePiano', detected_image)
             cv2.imshow('HomePiano', transformed_image)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         
-        saveRecordedLandmarks(data_dict)
+        saveRecordedLandmarks(data_dict, file_path)
+
         cap.release()
         cv2.destroyAllWindows()
-        print('Lowest FPS gained:', lowest_fps)
 
-main(0)
+FILE_PATH = 'Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection\\hand_coordinates_dataset.csv'
+VIDEO_PATH = ''
+main(1, VIDEO_PATH,  FILE_PATH)
