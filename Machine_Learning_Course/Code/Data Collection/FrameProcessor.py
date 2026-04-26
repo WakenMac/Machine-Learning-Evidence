@@ -1,5 +1,5 @@
 # Author: Waken Cean C. Maclang
-# Date Last Edited: April 26, 2025
+# Date Last Edited: April 25, 2025
 # Course: Machine Learning
 # Task: Learning Evidence
 
@@ -20,10 +20,10 @@ import time
 # Details were taken from (L = 640 x W = 480) dimension resized image
 # Captured: 1280, 720
 # Resized: 960, 540
-
-KNOWN_AREA = 25360    # For the (L = 640 x W = 480) dimension
-# KNOWN_AREA = 76872      # For the (L = 1280 x W = 720) dimension
-KNOWN_DISTANCE = 10    # In Centimeters
+ 
+# KNOWN_AREA = 25360    # For the (L = 640 x W = 480) dimension
+KNOWN_AREA = 76872      # For the (L = 1280 x W = 720) dimension
+KNOWN_DISTANCE = 100    # In Centimeters
 H_matrix = None
 minimum_quality = [1280, 720]
 high_quality = [1920, 1080]
@@ -231,28 +231,13 @@ def get_aruco_area(corners) -> int :
 
 def get_piano_distance(corners) -> float:
     """
-    Calculates the average distance from the piano by getting the ratio of the area of the ArUco
-    markers detected in the image with respect to the reference point (KNOWN DISTANCE of 100cm and
-    KNOWN AREA of 78k pixels)
-
-    @return distance The calculated distance of the camera to the paper piano
+    Calculates the distance from one piano to the next
     """
     new_area = get_aruco_area(corners)
     if new_area == -1:
         return -1
     return KNOWN_DISTANCE * (KNOWN_AREA / new_area) ** 0.5
     
-def handleImageOverlay(image, text):
-    org = (10, 30)
-    fontFace = cv2.FONT_HERSHEY_SIMPLEX
-    fontScale = 0.8
-    color = (255, 255, 255)  # White
-    thickness = 2
-    lineType = cv2.LINE_AA
-
-    return cv2.putText(image, text, org, fontFace, fontScale, color, 
-                                thickness, lineType)
-
 def main(camera_index:int):
     """
     Main method to run the AR Piano Model.
@@ -284,9 +269,6 @@ def main(camera_index:int):
                 piano_boarder is not None and len(piano_boarder) == 4 and len(ids) == 2
 
             if markers_detected:
-                distance = get_piano_distance(corners)
-                detected_image = handleImageOverlay(detected_image, f'Piano Distance: {distance:.2f} cm.')
-
                 # Perform homographical transformation here
                 transformed_image = apply_homography(detected_image, piano_boarder)
                 # transformed_image = detected_image.copy()
@@ -322,8 +304,8 @@ def main(camera_index:int):
                     #     # if pressed and key_hovered != 'NA':
                     #     if key_hovered != 'NA':
                     #         print(f'Key {key_hovered} pressed!')
-            
-            transformed_image = detected_image
+            else:
+                transformed_image = detected_image
 
             # cv2.imshow('HomePiano', detected_image)
             cv2.imshow('HomePiano', transformed_image)

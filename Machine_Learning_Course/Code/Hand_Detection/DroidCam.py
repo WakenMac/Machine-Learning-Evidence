@@ -1,7 +1,6 @@
 import cv2
 import mediapipe as mp
 from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.vision import RunningMode, HandLandmarker, HandLandmarkerOptions 
 import time
 
@@ -15,8 +14,8 @@ high_quality = [1920, 1080]
 def init():
     global cap, mp_hands, mp_drawing, hands, detector
 
-    # cap = cv2.VideoCapture(0) # Use this if the webcam is off
-    cap = cv2.VideoCapture(1) # Use this if Iriun webcam is on
+    cap = cv2.VideoCapture(0) # Use this if the webcam is off
+    # cap = cv2.VideoCapture(1) # Use this if Iriun webcam is on
     # cap = cv2.VideoCapture(2) # Use this if the webcam is on
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, minimum_quality[0])
@@ -29,6 +28,8 @@ def init():
         num_hands=2,
     )
     detector = HandLandmarker.create_from_options(options)
+    print(cap.get(cv2.CAP_PROP_FPS))
+
 
 def processImage(image):
     # Resizing the Image

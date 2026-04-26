@@ -1,17 +1,26 @@
-import mediapipe as mp
+from mediapipe.tasks.python import BaseOptions
+import mediapipe as mp 
+from mediapipe.tasks import python
+from mediapipe.tasks.python.vision import RunningMode, HandLandmarker, HandLandmarkerOptions 
+import time
 import numpy as np
 from collections import deque
-import time
 import cv2
+
+cap = mp_hands = mp_drawing = hands = None
+detector = None
 
 class HandPressDetector:
     def __init__(self, debounce_time=0.15, filter_size=5):
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-            max_num_hands=2
+        model_path = 'Machine-Learning-Evidence\Machine_Learning_Course\Code\hand_landmarker.task'
+        base_options = python.BaseOptions(model_asset_path=model_path)
+        options = HandLandmarkerOptions(
+            base_options=base_options, 
+            num_hands = 2,
+            running_mode = RunningMode.VIDEO
         )
+        self.detector = HandLandmarker.create_from_options(options)
+
         self.mp_drawing = mp.solutions.drawing_utils
         self.last_press_time = 0
         self.debounce_time = debounce_time
