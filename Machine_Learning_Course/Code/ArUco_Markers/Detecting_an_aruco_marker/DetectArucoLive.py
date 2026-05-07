@@ -3,7 +3,7 @@
 # Course: Machine Learning
 # Task: Learning Evidence
 
-# DetectArucoLive.py 
+# DetectArucoLive.py
 #     It consists of the entire Algorithmic Framework to Detect the AR Piano and Hands, whilst playing the piano key.
 #     Designed to be used for live use.
 

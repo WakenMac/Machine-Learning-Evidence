@@ -22,7 +22,7 @@ import time
 # Captured: 1280, 720
 # Resized: 960, 540
 
-KNOWN_AREA = 25360    # For the (L = 640 x W = 480) dimension
+KNOWN_AREA = 25360    # For the (L = 640 x W = 480) dimension (Most accurate)
 # KNOWN_AREA = 76872      # For the (L = 1280 x W = 720) dimension
 KNOWN_DISTANCE = 10    # In Centimeters
 H_matrix = None
