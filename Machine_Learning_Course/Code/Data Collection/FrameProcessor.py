@@ -1,5 +1,5 @@
 # Author: Waken Cean C. Maclang
-# Date Last Edited: April 26, 2025
+# Date Last Edited: April 26, 2026
 # Course: Machine Learning
 # Task: Learning Evidence
 
@@ -9,6 +9,7 @@
 
 # Works with Python 3.14.2
 
+import os
 import cv2
 from cv2 import aruco
 import numpy as np
@@ -51,7 +52,7 @@ def init_detectors(video_path:str):
         running_mode = RunningMode.VIDEO
     )
 
-    cap = cv2.VideoCapture(video_path, cv2.CAP_DSHOW)
+    cap = cv2.VideoCapture(video_path)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, minimum_quality[0])
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, minimum_quality[1])
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -59,6 +60,44 @@ def init_detectors(video_path:str):
 
     hand_detector = HandLandmarker.create_from_options(options)
     return [cap, aruco_detector, hand_detector]
+
+def printCapDetails(cap, video_path: str) -> bool:
+    """
+    Method to print out the details of the cap
+    If the wrong video is being played, stops the Frame Processor from starting
+    """
+    file_name = os.path.basename(video_path)
+    file_size_mb = os.path.getsize(video_path) / (1024 * 1024)
+
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    if fps > 0:
+        duration_sec = total_frames / fps
+        mins = int(duration_sec // 60)
+        secs = int(duration_sec % 60)
+        duration_str = f"{mins}m {secs}s"
+    else:
+        duration_str = "Unknown"
+
+    print("="*45)
+    print(" 🎬 VIDEO METADATA REPORT ")
+    print("="*45)
+    print(f"File Name:    {file_name}")
+    print(f"File Size:    {file_size_mb:.2f} MB")
+    print(f"Resolution:   {width} x {height} pixels")
+    print(f"Framerate:    {fps:.2f} FPS")
+    print(f"Total Frames: {total_frames}")
+    print(f"Duration:     {duration_str} ({duration_sec:.2f} total seconds)")
+    print("="*45)
+
+    user_input = input('If ready to proceed to capture data, enter "Start".')
+    if user_input != 'Start':
+        return False
+    return True
+
 
 def generate_boarder_points(corners):
     """
@@ -317,6 +356,7 @@ def main(user:int, video_path:str, file_path:str):
     Main method to run the AR Piano Model.
     """
 
+    distance = -1
     frame_count = 1
     transformed_image = None
     video_name = video_path.split('\\')[-1]
@@ -335,6 +375,33 @@ def main(user:int, video_path:str, file_path:str):
         print('Unable to access camera feed.')
         return
     else:
+        status = printCapDetails(cap, video_path)
+        if not status:
+            print('Frame Processing Canceled.')
+            return
+
+        success, frame = cap.read()
+        if not success:
+            return
+
+        print("--> INSTRUCTIONS: Click and drag a box around the RED LED.")
+        print("--> Press 'SPACE' or 'ENTER' to confirm the box.")
+        print("--> Press 'c' to cancel and try again.")
+        
+        roi_boxes = []
+        i = 0
+        while i < 7:
+            window_name = f"Select LED for Key {i}"
+            # This will pause the video and wait for you to draw and press Enter
+            box = cv2.selectROI(window_name, frame, fromCenter=False, showCrosshair=True)
+            if box[0] == 0: # box array dimensions: x, y, w, h
+                continue
+            roi_boxes.append(box)
+            cv2.destroyWindow(window_name)
+            i += 1
+        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 1)
+
         while True:
             success, frame = cap.read()
             if not success:
@@ -351,7 +418,7 @@ def main(user:int, video_path:str, file_path:str):
 
             if markers_detected:
                 distance = get_piano_distance(corners)
-                detected_image = handleImageOverlay(detected_image, f'Piano Distance: {distance:.2f} cm. \nFrame: {frame}')
+                detected_image = handleImageOverlay(detected_image, f'Piano Distance: {distance:.2f} cm. \nFrame: {frame_count}')
 
                 # Perform homographical transformation here
                 transformed_image = apply_homography(detected_image, piano_boarder)
@@ -371,7 +438,7 @@ def main(user:int, video_path:str, file_path:str):
                             y = int(landmark.y * h)
 
                             appendRecordedLandmarks(data_dict, H_matrix, frame_count, i, x, y,)
-                            cv2.circle(detected_image, (x, y), 5, (0, 255, 0), -1)
+                            # cv2.circle(detected_image, (x, y), 5, (0, 255, 0), -1)
 
                     # Gets the coordinates from the first hand
                     fingertip_coords = result.hand_landmarks[0]
@@ -385,9 +452,11 @@ def main(user:int, video_path:str, file_path:str):
                     #     # if pressed and key_hovered != 'NA':
                     #     if key_hovered != 'NA':
                     #         print(f'Key {key_hovered} pressed!')
-            
+            else:
+                distance = -1
+                
             transformed_image = detected_image
-
+            transformed_image = handleImageOverlay(transformed_image, f'Piano Distance: {distance:.2f} cm. \nFrame: {frame_count}')
             # cv2.imshow('HomePiano', detected_image)
             cv2.imshow('HomePiano', transformed_image)
 
@@ -399,6 +468,6 @@ def main(user:int, video_path:str, file_path:str):
         cap.release()
         cv2.destroyAllWindows()
 
-FILE_PATH = 'Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection\\hand_coordinates_dataset.csv'
-VIDEO_PATH = ''
+FILE_PATH = 'C:\\Users\\Waks\\Downloads\\USeP Acads\\3rd Year 2nd Sem\\ICE 322 - Publishing Research Papers\\Machine-Learning-Evidence\\Machine_Learning_Course\\Code\\Data Collection\\hand_coordinates_dataset.csv'
+VIDEO_PATH = 'C:\\Users\\Waks\\Downloads\\USeP Acads\\3rd Year 2nd Sem\\ICE 322 - Publishing Research Papers\\Machine-Learning-Evidence\\Machine_Learning_Course\\Trial Recordings\\[3] Key Hover Detection.mp4'
 main(1, VIDEO_PATH,  FILE_PATH)

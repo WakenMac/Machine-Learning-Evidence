@@ -1,7 +1,13 @@
 #include <CapacitiveSensor.h>
 
-int baseline = 1000;
-int offset = 100;
+// Manipulate these based what threshold is being shown by the print statements.
+int baseline = 200;
+int offset = 130;
+
+// Any errors or inconsistencies may be due to the following:
+// 1. Wires are not connected properly to the main foil
+// 2. Resistors are not properly connected
+// 3. Threshold values are not calibrated based on the environment
 
 // Initialize the sensor
 // 1 is the Send pin, 2 is the Receive pin (where your foil is attached)
@@ -48,10 +54,14 @@ void loop() {
   
   long valueG = keyG.capacitiveSensor(5);
   handleValues(valueG, 6);
+
+  Serial.println(valueC);
 }
 
 void handleValues(int values, int i){
   // Handles the values read for each pin
+  // Serial.println(String(values) + " " + String(i));
+    
     if (values > baseline + offset) {
       // Serial.println(String(values) + " " + String(i));
       digitalWrite(LEDPins[i], HIGH);

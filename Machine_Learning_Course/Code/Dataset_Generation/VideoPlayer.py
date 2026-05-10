@@ -340,7 +340,7 @@ class VideoPlayer:
                 return key
         return None
 
-    def get_video_player(video_index:int = 0, dataset_path:str = None, starting_frame:int = 0):
+    def get_video_player(self, video_index:int = 0, dataset_path:str = None, starting_frame:int = 0):
         if video_index < 0 or video_index > len(VideoPlayer.get_vid_list()) - 1:
             print('ERROR: Invalid video index passed.')
             return

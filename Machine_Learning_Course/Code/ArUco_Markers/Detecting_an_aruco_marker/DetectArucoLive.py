@@ -4,7 +4,8 @@
 # Task: Learning Evidence
 
 # DetectArucoLive.py
-#     It consists of the entire Algorithmic Framework to Detect the AR Piano and Hands, whilst playing the piano key.
+#     It consists of the entire Algorithmic Framework to Detect the AR Piano and Hands, 
+#     whilst playing the piano key.
 #     Designed to be used for live use.
 
 # Works with Python 3.14.2
@@ -321,6 +322,7 @@ def main(camera_index:int):
     }
     prev_frame_time = distance = 0
     transformed_image = None
+    hand_detected = False
     cap, aruco_detector, hand_detector = init_detectors(camera_index)
 
     if not cap.isOpened():
@@ -349,6 +351,7 @@ def main(camera_index:int):
                 frame_timestamp_ms = int(time.time() * 1000)
                 result = hand_detector.detect_for_video(mp_image, frame_timestamp_ms)
                 if result.hand_landmarks:
+                    hand_detected = True
                     for hand_landmark in result.hand_landmarks:
                         for i, landmark in enumerate(hand_landmark):
                             h, w, c = detected_image.shape
@@ -356,20 +359,23 @@ def main(camera_index:int):
                             y = int(landmark.y * h)
                             appendRecordedLandmarks(data_dict, H_matrix, frame_count, i, x, y,)
                             # cv2.circle(detected_image, (x, y), 5, (0, 255, 0), -1)
-
+                    
                     # Method for the piano playing logic
                     trackFingers(result.hand_landmarks[0], piano_boarder)
             
+                else:
+                    hand_detected = False
+                    
             # Handle FPS
             current_time = time.time()
             time_elapsed = current_time - prev_frame_time
             if time_elapsed > 0:
-                fps = 1 / time_elapsed
+                fps = int(1 / time_elapsed)
             else:
                 fps = 0
             prev_frame_time = current_time
             lowest_fps = fps if fps < lowest_fps and fps > 0 else lowest_fps 
-            text = f'Piano Distance: {distance:.2f} cm. FPS: {fps:.1f}'
+            text = f'Piano Distance: {distance:.2f} cm. FPS: {fps:.1f} Hands: {'detected' if hand_detected else 'not found.'}'
             detected_image = handleImageOverlay(detected_image, text)
             
             frame_count += 1
