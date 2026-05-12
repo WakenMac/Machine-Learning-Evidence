@@ -1,8 +1,11 @@
 #include <CapacitiveSensor.h>
 
 // Manipulate these based what threshold is being shown by the print statements.
-int baseline = 200;
-int offset = 130;
+// int baseline = 200;
+// int offset = 130;
+
+int baseline = 2000;
+int offset = 1500;
 
 // Any errors or inconsistencies may be due to the following:
 // 1. Wires are not connected properly to the main foil
@@ -55,7 +58,7 @@ void loop() {
   long valueG = keyG.capacitiveSensor(5);
   handleValues(valueG, 6);
 
-  Serial.println(valueC);
+  Serial.println(valueD);
 }
 
 void handleValues(int values, int i){

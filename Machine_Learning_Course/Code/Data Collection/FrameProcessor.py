@@ -454,11 +454,12 @@ def main(user:int, video_path:str, file_path:str):
                     #         print(f'Key {key_hovered} pressed!')
             else:
                 distance = -1
-                
+
             transformed_image = detected_image
             transformed_image = handleImageOverlay(transformed_image, f'Piano Distance: {distance:.2f} cm. \nFrame: {frame_count}')
             # cv2.imshow('HomePiano', detected_image)
             cv2.imshow('HomePiano', transformed_image)
+            frame_count += 1
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
