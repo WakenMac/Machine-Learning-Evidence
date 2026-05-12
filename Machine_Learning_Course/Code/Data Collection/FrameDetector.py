@@ -6,7 +6,7 @@ import pandas as pd
 
 # Configurations
 BASE_VIDEO_PATH = Path(r'E:\\Waks - Academics\\Publishing Research_Vid Recordings')
-SAVE_DIR = Path(r'Machine-Learning-Evidence\\Machine_Learning_Course\\Code\Data Collection')
+SAVE_DIR = Path(r'Machine-Learning-Evidence\\Machine_Learning_Course\\Code\\Data Collection')
 CSV_NAME = "frame_detector.csv"
 FULL_CSV_PATH = SAVE_DIR / CSV_NAME
 

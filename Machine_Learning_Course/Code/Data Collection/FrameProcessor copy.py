@@ -18,8 +18,6 @@ import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python.vision import RunningMode, HandLandmarker, HandLandmarkerOptions 
 import time
-import keyboard
-from pathlib import Path
 
 # Details were taken from (L = 640 x W = 480) dimension resized image
 # Captured: 1280, 720
@@ -32,7 +30,6 @@ H_matrix = None
 minimum_quality = [1280, 720]
 high_quality = [1920, 1080]
 fps = total_frames = None
-PIANO_BORDER_GLOBAL = None
 
 def init_detectors(video_path:str):
     """
@@ -101,43 +98,6 @@ def printCapDetails(cap, video_path: str) -> bool:
         return False
     return True
 
-def load_existing_roi(video_name):
-    """Checks the CSV for existing ROIs for this specific video."""
-    roi_csv_path = Path(r'Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection') / "roi_configs.csv"
-    
-    if roi_csv_path.exists():
-        df_roi = pd.read_csv(roi_csv_path)
-        # Filter for current video
-        video_data = df_roi[df_roi['video_name'] == video_name]
-        
-        if not video_data.empty:
-            print(f"--> Found saved ROIs for {video_name}. Loading...")
-            # Reconstruct the list of 7 boxes (x, y, w, h)
-            boxes = []
-            for i in range(1, 8):
-                row = video_data[video_data['LED_no'] == i].iloc[0]
-                boxes.append((int(row['x']), int(row['y']), int(row['w']), int(row['h'])))
-            return boxes
-    return None
-
-def save_new_roi(video_name, frame_idx, roi_boxes):
-    """Saves the 7 selected ROIs to the CSV."""
-    roi_csv_path = Path(r'Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection') / "roi_configs.csv"
-    
-    data_list = []
-    for i, box in enumerate(roi_boxes):
-        x, y, w, h = box
-        data_list.append({
-            'video_name': video_name,
-            'frame': frame_idx,
-            'LED_no': i + 1,
-            'x': x, 'y': y, 'w': w, 'h': h
-        })
-    
-    df_new = pd.DataFrame(data_list)
-    # Append to CSV (header only if new file)
-    df_new.to_csv(roi_csv_path, mode='a', header=not roi_csv_path.exists(), index=False)
-    print(f"--> ROIs for {video_name} saved to {roi_csv_path.name}")
 
 def generate_boarder_points(corners):
     """
@@ -391,60 +351,17 @@ def saveRecordedLandmarks(
     else:
         new_data.to_csv(file_path, index=False)
 
-def trackLEDs(video_name, frame_count, frame, roi_boxes):
-    """
-    Checks the center pixel of each ROI for LED activation and logs to CSV.
-    """
-    # Define the output path (Same directory as the script)
-    csv_path = Path(r'Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection') / "led_ground_truth.csv"
-    
-    # LED States (1 for Lit, 0 for Unlit)
-    led_states = []
-    
-    for box in roi_boxes:
-        x, y, w, h = box
-        # Calculate the center pixel of the ROI
-        center_x = x + (w // 2)
-        center_y = y + (h // 2)
-
-        h_img, w_img, _ = frame.shape
-        r_min = r_max = 0
-        if 0 <= center_x < w_img and 0 <= center_y < h_img:
-            b, g, r = frame[center_y, center_x]
-            
-            # Simple threshold: If Red component is high, LED is lit
-            # You may need to adjust '200' based on your LED brightness
-            if r > 200: 
-                led_states.append(1)
-            else:
-                led_states.append(0)
-
-            if r > r_max: 
-                r_max = r
-            if r < r_min: 
-                r_min = r
-
-        else:
-            led_states.append(0)
-        
-    print(r_min, r_max)
-
-    cols = ['file_name', 'frame'] + [f'led_{i+1}' for i in range(len(roi_boxes))]
-    df_row = pd.DataFrame([[video_name, frame_count] + led_states], columns=cols)
-    df_row.to_csv(csv_path, mode='a', header=not csv_path.exists(), index=False)
-
-def main(user:str, video_path:str, file_path:str, start_frame:int):
+def main(user:int, video_path:str, file_path:str):
     """
     Main method to run the AR Piano Model.
     """
 
-    global PIANO_BORDER_GLOBAL, H_matrix
     distance = -1
+    frame_count = 1
     transformed_image = None
     video_name = video_path.split('\\')[-1]
 
     cap, aruco_detector, hand_detector = init_detectors(video_path)
-    frame_count = cap.get(cv2.CAP_PROP_POS_FRAMES)
     data_dict = {
         'user': user,
         'video_name': video_name,
@@ -463,82 +380,65 @@ def main(user:str, video_path:str, file_path:str, start_frame:int):
             print('Frame Processing Canceled.')
             return
 
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-        success, capture = cap.read()
+        success, frame = cap.read()
         if not success:
             return
+
+        print("--> INSTRUCTIONS: Click and drag a box around the RED LED.")
+        print("--> Press 'SPACE' or 'ENTER' to confirm the box.")
+        print("--> Press 'c' to cancel and try again.")
         
-        roi_boxes = load_existing_roi(video_name)
-        if roi_boxes is None:
-            frame = cv2.rotate(capture.copy(), cv2.ROTATE_90_COUNTERCLOCKWISE)
-            frame = cv2.resize(frame, [960, 540])
-            print("--> INSTRUCTIONS: Click and drag a box around the RED LED.")
-            print("--> Press 'SPACE' or 'ENTER' to confirm the box.")
-            print("--> Press 'c' to cancel and try again.")
-            
-            roi_boxes = []
-            i = 0
-            while i < 7:
-                window_name = f"Select LED for Key {i}"
-                # This will pause the video and wait for you to draw and press Enter
-                box = cv2.selectROI(window_name, frame, fromCenter=False, showCrosshair=True)
-                if box[0] == 0: # box array dimensions: x, y, w, h
-                    continue
-                roi_boxes.append(box)
-                cv2.destroyWindow(window_name)
-                i += 1
-            
-            save_new_roi(video_name, start_frame, roi_boxes)
-            
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        roi_boxes = []
+        i = 0
+        while i < 7:
+            window_name = f"Select LED for Key {i}"
+            # This will pause the video and wait for you to draw and press Enter
+            box = cv2.selectROI(window_name, frame, fromCenter=False, showCrosshair=True)
+            if box[0] == 0: # box array dimensions: x, y, w, h
+                continue
+            roi_boxes.append(box)
+            cv2.destroyWindow(window_name)
+            i += 1
+        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 1)
 
         while True:
-            success, capture = cap.read()
+            success, frame = cap.read()
             if not success:
                 print('Unable to read frame')
                 continue
-            
-            frame = cv2.rotate(capture.copy(), cv2.ROTATE_90_COUNTERCLOCKWISE)
-            frame = cv2.resize(frame, [960, 540])
-            
-            trackLEDs(video_name, frame_count, frame, roi_boxes)
 
-            if PIANO_BORDER_GLOBAL is None:
-                # Try to detect ArUco markers to establish the border
-                corners, ids, _ = aruco_detector.detectMarkers(frame)
-                
-                # Verify if markers are valid
-                if corners is not None and ids is not None and len(ids) == 2:
-                    # Assign to global variable once found
-                    distance = get_piano_distance(corners)
-                    PIANO_BORDER_GLOBAL = generate_boarder_points(corners)
-                    print(f"Frame {frame_count}: Piano Border Established and Locked.")
+            img = frame.copy()
+            corners, ids, _ = aruco_detector.detectMarkers(img)
+            piano_boarder = generate_boarder_points(corners)
+            detected_image = draw_boarder(img, piano_boarder)
 
-            # 3. If the piano border is established, proceed with transformations
-            if PIANO_BORDER_GLOBAL is not None:
-                detected_image = draw_boarder(frame, PIANO_BORDER_GLOBAL)
-                transformed_image = apply_homography(detected_image, PIANO_BORDER_GLOBAL)
+            markers_detected = corners is not None and ids is not None and \
+                piano_boarder is not None and len(piano_boarder) == 4 and len(ids) == 2
 
-                # 4. Perform Hand Detection on the original frame
-                image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if markers_detected:
+                distance = get_piano_distance(corners)
+                detected_image = handleImageOverlay(detected_image, f'Piano Distance: {distance:.2f} cm. \nFrame: {frame_count}')
+
+                # Perform homographical transformation here
+                transformed_image = apply_homography(detected_image, piano_boarder)
+
+                image_rgb = cv2.cvtColor(detected_image, cv2.COLOR_BGR2RGB)
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-                
-                # Using Frame count and FPS to calculate timestamp for VIDEO mode
-                frame_timestamp_ms = int((frame_count / fps) * 1000)
-                # frame_timestamp_ms = int(time.time() * 1000)
+                frame_timestamp_ms = int(time.time() * 1000)
                 result = hand_detector.detect_for_video(mp_image, frame_timestamp_ms)
 
-                # 5. Process and Log Landmarks
+                # Draws the points to the image_bgr
                 if result.hand_landmarks:
                     for hand_landmark in result.hand_landmarks:
                         for i, landmark in enumerate(hand_landmark):
-                            h, w, _ = frame.shape
+                            # Normalized measurement to pixel coordinate
+                            h, w, c = detected_image.shape
                             x = int(landmark.x * w)
                             y = int(landmark.y * h)
-                            
-                            # Apply H_matrix transformation and log
-                            appendRecordedLandmarks(data_dict, H_matrix, frame_count, i, x, y)
-                            cv2.circle(detected_image, (x, y), 5, (0, 255, 0), -1)
+
+                            appendRecordedLandmarks(data_dict, H_matrix, frame_count, i, x, y,)
+                            # cv2.circle(detected_image, (x, y), 5, (0, 255, 0), -1)
 
                     # Gets the coordinates from the first hand
                     fingertip_coords = result.hand_landmarks[0]
@@ -552,61 +452,23 @@ def main(user:str, video_path:str, file_path:str, start_frame:int):
                     #     # if pressed and key_hovered != 'NA':
                     #     if key_hovered != 'NA':
                     #         print(f'Key {key_hovered} pressed!')
-
-            
-                cv2.imshow('HomePiano (Transformed)', detected_image)
-                cv2.waitKey(5)
-
-                if keyboard.is_pressed('q') or keyboard.is_pressed('esc'):
-                    cap.release()
-                    return "QUIT"
-
             else:
-                # If border isn't found yet, just show raw feed
-                cv2.putText(frame, "Waiting for ArUco Markers...", (50, 50), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                cv2.imshow('HomePiano (Transformed)', frame)
+                distance = -1
 
+            transformed_image = detected_image
+            transformed_image = handleImageOverlay(transformed_image, f'Piano Distance: {distance:.2f} cm. \nFrame: {frame_count}')
+            # cv2.imshow('HomePiano', detected_image)
+            cv2.imshow('HomePiano', transformed_image)
             frame_count += 1
-            if keyboard.is_pressed('q') or keyboard.is_pressed('esc'):
-                saveRecordedLandmarks(data_dict, file_path)
-                cap.release()
-                cv2.destroyAllWindows()
 
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        
         saveRecordedLandmarks(data_dict, file_path)
+
         cap.release()
         cv2.destroyAllWindows()
 
-BASE_VIDEO_DIR = Path(r'E:\Waks - Academics\Publishing Research_Vid Recordings')
-DETECTOR_CSV_PATH = Path(r'Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection\frame_detector.csv')
-COORDINATE_DATASET_PATH = r'C:\Users\Waks\Downloads\USeP Acads\3rd Year 2nd Sem\ICE 322 - Publishing Research Papers\Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection\hand_coordinates_dataset.csv'
-
-if __name__ == "__main__":
-    if not DETECTOR_CSV_PATH.exists():
-        print(f"Error: {DETECTOR_CSV_PATH} not found. Run FrameDetector first.")
-    else:
-        # Load the progress from your detector script
-        df_detector = pd.read_csv(DETECTOR_CSV_PATH)
-        
-        # We only want to process videos where you've actually set a start frame (> 0)
-        videos_to_process = df_detector[df_detector['start_frame'] > 0]
-        
-        print(f"Found {len(videos_to_process)} videos ready for processing.\n")
-
-        for index, row in videos_to_process.iterrows():
-            filename = row['file_name']
-            start_f = int(row['start_frame'])
-            full_video_path = str(BASE_VIDEO_DIR / filename)
-
-            print(f"\n[BATCH] Starting Video: {filename}")
-            print(f"[BATCH] Seeking to Frame: {start_f}")
-
-            # Reset the global border for each new video to ensure clean detection
-            PIANO_BORDER_GLOBAL = None 
-            
-            # Execute the main processing method
-            # 'user' is set to 1 here; you could also add a 'user' column to your CSV
-            main(user=row['file_name'].split('_')[0], video_path=full_video_path, file_path=COORDINATE_DATASET_PATH, start_frame=start_f)
-            break
-
-        print("\nAll videos in the queue have been processed.")
+FILE_PATH = 'C:\\Users\\Waks\\Downloads\\USeP Acads\\3rd Year 2nd Sem\\ICE 322 - Publishing Research Papers\\Machine-Learning-Evidence\\Machine_Learning_Course\\Code\\Data Collection\\hand_coordinates_dataset.csv'
+VIDEO_PATH = 'C:\\Users\\Waks\\Downloads\\USeP Acads\\3rd Year 2nd Sem\\ICE 322 - Publishing Research Papers\\Machine-Learning-Evidence\\Machine_Learning_Course\\Trial Recordings\\[3] Key Hover Detection.mp4'
+main(1, VIDEO_PATH,  FILE_PATH)
