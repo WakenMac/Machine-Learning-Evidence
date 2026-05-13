@@ -190,9 +190,3 @@ finally:
     df.to_csv(FULL_CSV_PATH, index=False)
     print(f"\nProgress saved to: {FULL_CSV_PATH}")
     cv2.destroyAllWindows()
-
-# path = Path('E:\Waks - Academics\Publishing Research_Vid Recordings')
-# files = []
-# for file in path.iterdir():
-#     if file.is_file():
-#         files.append(str(path) + '\\' + file.name)

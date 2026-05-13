@@ -33,6 +33,10 @@ minimum_quality = [1280, 720]
 high_quality = [1920, 1080]
 fps = total_frames = None
 PIANO_BORDER_GLOBAL = None
+led_lit = [0, 0, 0, 0, 0, 0, 0]
+
+# Manipulate this:
+HEADLESS_MODE = True # Option to show the image
 
 def init_detectors(video_path:str):
     """
@@ -116,7 +120,7 @@ def load_existing_roi(video_name):
             boxes = []
             for i in range(1, 8):
                 row = video_data[video_data['LED_no'] == i].iloc[0]
-                boxes.append((int(row['x']), int(row['y']), int(row['w']), int(row['h'])))
+                boxes.append((int(row['x']), int(row['y']), int(row['threshold'])))
             return boxes
     return None
 
@@ -127,11 +131,14 @@ def save_new_roi(video_name, frame_idx, roi_boxes):
     data_list = []
     for i, box in enumerate(roi_boxes):
         x, y, w, h = box
+        center_x = x + (w // 2)
+        center_y = y + (h // 2)
+        
         data_list.append({
             'video_name': video_name,
-            'frame': frame_idx,
+            'frame_no': frame_idx,
             'LED_no': i + 1,
-            'x': x, 'y': y, 'w': w, 'h': h
+            'x': center_x, 'y': center_y
         })
     
     df_new = pd.DataFrame(data_list)
@@ -334,6 +341,28 @@ def get_piano_distance(corners) -> float:
         return -1
     return KNOWN_DISTANCE * (KNOWN_AREA / new_area) ** 0.5
     
+def saveDistanceData(video_name, distance, file_path):
+    """
+    Saves the static distance of a video to a CSV file.
+    Columns: video_name, distance
+    """
+    csv_path = Path(file_path)
+    
+    # Prepare the new row
+    new_entry = pd.DataFrame([{'video_name': video_name, 'distance': distance}])
+
+    if csv_path.exists():
+        df = pd.read_csv(csv_path)
+        # Avoid duplicate entries for the same video
+        if video_name in df['video_name'].values:
+            return
+        df = pd.concat([df, new_entry], ignore_index=True)
+    else:
+        df = new_entry
+
+    df.to_csv(csv_path, index=False)
+    print(f"--> Distance for {video_name} saved: {distance:.2f} cm")
+
 def handleImageOverlay(image, text):
     org = (10, 30)
     fontFace = cv2.FONT_HERSHEY_SIMPLEX
@@ -395,27 +424,24 @@ def trackLEDs(video_name, frame_count, frame, roi_boxes):
     """
     Checks the center pixel of each ROI for LED activation and logs to CSV.
     """
+    global led_lit
     # Define the output path (Same directory as the script)
     csv_path = Path(r'Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection') / "led_ground_truth.csv"
     
     # LED States (1 for Lit, 0 for Unlit)
     led_states = []
     
-    for box in roi_boxes:
-        x, y, w, h = box
-        # Calculate the center pixel of the ROI
-        center_x = x + (w // 2)
-        center_y = y + (h // 2)
-
+    for i, (x, y, threshold) in enumerate(roi_boxes):
         h_img, w_img, _ = frame.shape
-        r_min = r_max = 0
-        if 0 <= center_x < w_img and 0 <= center_y < h_img:
-            b, g, r = frame[center_y, center_x]
-            
+        r_min = r_max = 150
+        if 0 <= x < w_img and 0 <= y < h_img:
+            b, g, r = frame[y, x]
+
             # Simple threshold: If Red component is high, LED is lit
             # You may need to adjust '200' based on your LED brightness
-            if r > 200: 
+            if r >= threshold: 
                 led_states.append(1)
+                led_lit[i] = led_lit[i] + 1
             else:
                 led_states.append(0)
 
@@ -426,187 +452,177 @@ def trackLEDs(video_name, frame_count, frame, roi_boxes):
 
         else:
             led_states.append(0)
-        
-    print(r_min, r_max)
 
     cols = ['file_name', 'frame'] + [f'led_{i+1}' for i in range(len(roi_boxes))]
     df_row = pd.DataFrame([[video_name, frame_count] + led_states], columns=cols)
     df_row.to_csv(csv_path, mode='a', header=not csv_path.exists(), index=False)
 
-def main(user:str, video_path:str, file_path:str, start_frame:int):
-    """
-    Main method to run the AR Piano Model.
-    """
-
-    global PIANO_BORDER_GLOBAL, H_matrix
+def main(user:str, video_path:str, file_path:str, start_frame:int, distance_file_path:str):
+    global PIANO_BORDER_GLOBAL, H_matrix, HEADLESS_MODE
     distance = -1
-    transformed_image = None
     video_name = video_path.split('\\')[-1]
 
     cap, aruco_detector, hand_detector = init_detectors(video_path)
-    frame_count = cap.get(cv2.CAP_PROP_POS_FRAMES)
+    frame_count = start_frame
     data_dict = {
-        'user': user,
-        'video_name': video_name,
-        'frame_index': [],
-        'hand_landmark':[],
-        'x_coords':[],
-        'y_coords':[]
+        'user': user, 'video_name': video_name, 'frame_index': [],
+        'hand_landmark':[], 'x_coords':[], 'y_coords':[]
     }
 
     if not cap.isOpened():
         print('Unable to access camera feed.')
         return
-    else:
-        status = printCapDetails(cap, video_path)
-        if not status:
-            print('Frame Processing Canceled.')
-            return
 
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+    status = printCapDetails(cap, video_path)
+    if not status: return
+
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+    success, capture = cap.read()
+    if not success: return
+    
+    # ROI selection must remain interactive if data is missing
+    roi_boxes = load_existing_roi(video_name)
+    if roi_boxes is None:
+        # Temporarily force display for ROI selection
+        frame = cv2.rotate(capture.copy(), cv2.ROTATE_90_COUNTERCLOCKWISE)
+        frame = cv2.resize(frame, [960, 540])
+        roi_boxes = []
+        i = 0
+        while i < 7:
+            window_name = f"Select LED for Key {i}"
+            box = cv2.selectROI(window_name, frame, fromCenter=False, showCrosshair=True)
+            if box[0] == 0: continue
+            roi_boxes.append(box[0:2])
+            cv2.destroyWindow(window_name)
+            i += 1
+        save_new_roi(video_name, start_frame, roi_boxes)
+            
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    print(f"Processing {video_name} (Headless: {HEADLESS_MODE})...")
+
+    while True:
         success, capture = cap.read()
-        if not success:
-            return
+        if not success: break
         
-        roi_boxes = load_existing_roi(video_name)
-        if roi_boxes is None:
-            frame = cv2.rotate(capture.copy(), cv2.ROTATE_90_COUNTERCLOCKWISE)
-            frame = cv2.resize(frame, [960, 540])
-            print("--> INSTRUCTIONS: Click and drag a box around the RED LED.")
-            print("--> Press 'SPACE' or 'ENTER' to confirm the box.")
-            print("--> Press 'c' to cancel and try again.")
-            
-            roi_boxes = []
-            i = 0
-            while i < 7:
-                window_name = f"Select LED for Key {i}"
-                # This will pause the video and wait for you to draw and press Enter
-                box = cv2.selectROI(window_name, frame, fromCenter=False, showCrosshair=True)
-                if box[0] == 0: # box array dimensions: x, y, w, h
-                    continue
-                roi_boxes.append(box)
-                cv2.destroyWindow(window_name)
-                i += 1
-            
-            save_new_roi(video_name, start_frame, roi_boxes)
-            
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        # Core transformation frame
+        frame = cv2.rotate(capture.copy(), cv2.ROTATE_90_COUNTERCLOCKWISE)
+        frame = cv2.resize(frame, [960, 540])
+        
+        # [1] Ground Truth Logging (Always runs)
+        trackLEDs(video_name, frame_count, frame, roi_boxes)
 
-        while True:
-            success, capture = cap.read()
-            if not success:
-                print('Unable to read frame')
-                continue
-            
-            frame = cv2.rotate(capture.copy(), cv2.ROTATE_90_COUNTERCLOCKWISE)
-            frame = cv2.resize(frame, [960, 540])
-            
-            trackLEDs(video_name, frame_count, frame, roi_boxes)
+        # [2] Piano Border / Homography Logic
+        if PIANO_BORDER_GLOBAL is None:
+            corners, ids, _ = aruco_detector.detectMarkers(frame)
+            if corners is not None and ids is not None and len(ids) == 2:
+                PIANO_BORDER_GLOBAL = generate_boarder_points(corners)
+                distance = get_piano_distance(corners)
+                if distance != -1:
+                    saveDistanceData(video_name, distance, distance_file_path)
 
-            if PIANO_BORDER_GLOBAL is None:
-                # Try to detect ArUco markers to establish the border
-                corners, ids, _ = aruco_detector.detectMarkers(frame)
-                
-                # Verify if markers are valid
-                if corners is not None and ids is not None and len(ids) == 2:
-                    # Assign to global variable once found
-                    distance = get_piano_distance(corners)
-                    PIANO_BORDER_GLOBAL = generate_boarder_points(corners)
-                    print(f"Frame {frame_count}: Piano Border Established and Locked.")
+        if PIANO_BORDER_GLOBAL is not None:
+            # [3] CRITICAL: apply_homography MUST be called to update global H_matrix
+            apply_homography(frame, PIANO_BORDER_GLOBAL)
 
-            # 3. If the piano border is established, proceed with transformations
-            if PIANO_BORDER_GLOBAL is not None:
-                detected_image = draw_boarder(frame, PIANO_BORDER_GLOBAL)
-                transformed_image = apply_homography(detected_image, PIANO_BORDER_GLOBAL)
+            # [4] Hand Detection Logic
+            image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+            frame_timestamp_ms = int((frame_count / fps) * 1000)
+            result = hand_detector.detect_for_video(mp_image, frame_timestamp_ms)
 
-                # 4. Perform Hand Detection on the original frame
-                image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-                
-                # Using Frame count and FPS to calculate timestamp for VIDEO mode
-                frame_timestamp_ms = int((frame_count / fps) * 1000)
-                # frame_timestamp_ms = int(time.time() * 1000)
-                result = hand_detector.detect_for_video(mp_image, frame_timestamp_ms)
+            # [5] Data Logging
+            if result.hand_landmarks:
+                for hand_landmark in result.hand_landmarks:
+                    for i, landmark in enumerate(hand_landmark):
+                        h, w, _ = frame.shape
+                        x, y = int(landmark.x * w), int(landmark.y * h)
+                        # Saves coordinates using the H_matrix generated in step 3
+                        appendRecordedLandmarks(data_dict, H_matrix, frame_count, i, x, y)
+                        
+                        # Only draw if not in headless mode
+                        if not HEADLESS_MODE:
+                            cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
 
-                # 5. Process and Log Landmarks
-                if result.hand_landmarks:
-                    for hand_landmark in result.hand_landmarks:
-                        for i, landmark in enumerate(hand_landmark):
-                            h, w, _ = frame.shape
-                            x = int(landmark.x * w)
-                            y = int(landmark.y * h)
-                            
-                            # Apply H_matrix transformation and log
-                            appendRecordedLandmarks(data_dict, H_matrix, frame_count, i, x, y)
-                            cv2.circle(detected_image, (x, y), 5, (0, 255, 0), -1)
-
-                    # Gets the coordinates from the first hand
-                    fingertip_coords = result.hand_landmarks[0]
-
-                    # For the piano playing logic
-                    # boarder_values = get_min_max(piano_boarder)
-                    # if boarder_values:
-                    #     key_width = get_key_width(get_border_dimensions(boarder_values)[1])
-                    #     key_hovered = get_key_hovered(fingertip_coords, key_width, boarder_values)
-
-                    #     # if pressed and key_hovered != 'NA':
-                    #     if key_hovered != 'NA':
-                    #         print(f'Key {key_hovered} pressed!')
-
-            
-                cv2.imshow('HomePiano (Transformed)', detected_image)
-                cv2.waitKey(5)
-
-                if keyboard.is_pressed('q') or keyboard.is_pressed('esc'):
-                    cap.release()
-                    return "QUIT"
-
-            else:
-                # If border isn't found yet, just show raw feed
-                cv2.putText(frame, "Waiting for ArUco Markers...", (50, 50), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            # [6] UI Rendering Toggle
+            if not HEADLESS_MODE:
                 cv2.imshow('HomePiano (Transformed)', frame)
+                if cv2.waitKey(5) & 0xFF == ord('q'):
+                    saveRecordedLandmarks(data_dict, file_path)
+                    return "QUIT"
+            else:
+                # In Headless, we check keyboard directly without waitKey latency
+                if keyboard.is_pressed('q'):
+                    saveRecordedLandmarks(data_dict, file_path)
+                    return "QUIT"
+        else:
+            if not HEADLESS_MODE:
+                cv2.putText(frame, "Waiting for ArUco...", (50, 50), 0, 1, (0,0,255), 2)
+                cv2.imshow('HomePiano (Transformed)', frame)
+                cv2.waitKey(1)
 
-            frame_count += 1
-            if keyboard.is_pressed('q') or keyboard.is_pressed('esc'):
-                saveRecordedLandmarks(data_dict, file_path)
-                cap.release()
-                cv2.destroyAllWindows()
+        frame_count += 1
 
-        saveRecordedLandmarks(data_dict, file_path)
-        cap.release()
-        cv2.destroyAllWindows()
+    saveRecordedLandmarks(data_dict, file_path)
+    print(f'LEDs lit up: {led_lit}')
+    cap.release()
+    if not HEADLESS_MODE: cv2.destroyAllWindows()
+    return True
 
-BASE_VIDEO_DIR = Path(r'E:\Waks - Academics\Publishing Research_Vid Recordings')
+BASE_VIDEO_DIR = Path(r'D:\Datasets\Publishing Research_Vid Recordings')
 DETECTOR_CSV_PATH = Path(r'Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection\frame_detector.csv')
-COORDINATE_DATASET_PATH = r'C:\Users\Waks\Downloads\USeP Acads\3rd Year 2nd Sem\ICE 322 - Publishing Research Papers\Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection\hand_coordinates_dataset.csv'
+COORDINATE_DATASET_PATH = r'Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection\hand_coordinates_dataset.csv'
+DISTANCE_DATASET_PATH = Path(r'Machine-Learning-Evidence\Machine_Learning_Course\Code\Data Collection\distance.csv')
 
 if __name__ == "__main__":
     if not DETECTOR_CSV_PATH.exists():
         print(f"Error: {DETECTOR_CSV_PATH} not found. Run FrameDetector first.")
     else:
-        # Load the progress from your detector script
+        # 1. Load the progress from your detector script
         df_detector = pd.read_csv(DETECTOR_CSV_PATH)
         
-        # We only want to process videos where you've actually set a start frame (> 0)
+        # 2. Identify already processed videos from the coordinates dataset
+        processed_videos = []
+        if Path(COORDINATE_DATASET_PATH).exists():
+            df_coords = pd.read_csv(COORDINATE_DATASET_PATH)
+            if 'video_name' in df_coords.columns:
+                processed_videos = df_coords['video_name'].unique().tolist()
+                print(f"Skipping {len(processed_videos)} already processed videos.")
+
+        # 3. Filter for videos that have a valid start frame (> 0)
         videos_to_process = df_detector[df_detector['start_frame'] > 0]
         
-        print(f"Found {len(videos_to_process)} videos ready for processing.\n")
+        print(f"Found {len(videos_to_process)} videos in the detector queue.\n")
 
         for index, row in videos_to_process.iterrows():
             filename = row['file_name']
+            
+            # --- SKIP LOGIC ---
+            if filename in processed_videos:
+                continue # Skip to the next video
+            
             start_f = int(row['start_frame'])
             full_video_path = str(BASE_VIDEO_DIR / filename)
 
-            print(f"\n[BATCH] Starting Video: {filename}")
+            print(f"\n[BATCH] Processing: {filename}")
             print(f"[BATCH] Seeking to Frame: {start_f}")
 
             # Reset the global border for each new video to ensure clean detection
-            PIANO_BORDER_GLOBAL = None 
+            PIANO_BORDER_GLOBAL = None
             
             # Execute the main processing method
-            # 'user' is set to 1 here; you could also add a 'user' column to your CSV
-            main(user=row['file_name'].split('_')[0], video_path=full_video_path, file_path=COORDINATE_DATASET_PATH, start_frame=start_f)
-            break
+            # Extracts the 'user' name from the filename prefix (e.g., 'Cap' from 'Cap_Phase1...')
+            user_id = filename.split('_')[0]
+            
+            status = main(
+                user=user_id, 
+                video_path=full_video_path, 
+                file_path=COORDINATE_DATASET_PATH, 
+                start_frame=start_f,
+                distance_file_path=DISTANCE_DATASET_PATH
+            )
 
-        print("\nAll videos in the queue have been processed.")
+            if not status:
+                break
+            
+        print("\nBatch processing complete.")
